@@ -3,6 +3,7 @@
 import asyncio
 import collections
 from collections.abc import Mapping
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -93,7 +94,7 @@ IEEE_SERVICE = "ieee_based_service"
 SERVICE_PERMIT_PARAMS = {
     vol.Optional(ATTR_IEEE, default=None): EUI64.convert,
     vol.Optional(ATTR_DURATION, default=60): vol.All(
-        vol.Coerce(int), vol.Range(0, 254)
+        vol.Coerce(int), vol.Range(0, 7200)
     ),
     vol.Inclusive(ATTR_SOURCE_IEEE, "install_code"): EUI64.convert,
     vol.Inclusive(ATTR_INSTALL_CODE, "install_code"): convert_install_code,
@@ -186,6 +187,49 @@ SERVICE_SCHEMAS = {
 ClusterBinding = collections.namedtuple("ClusterBinding", "id endpoint_id type name")
 
 
+async def _permit_once(zha_gateway, msg, duration: int):
+    """Permit joins once via one of the supported methods."""
+
+    ieee = msg.get(ATTR_IEEE)
+    if ATTR_SOURCE_IEEE in msg:
+        src_ieee = msg[ATTR_SOURCE_IEEE]
+        code = msg[ATTR_INSTALL_CODE]
+        _LOGGER.info("Allowing join for %s device with install code", src_ieee)
+        await zha_gateway.permit_with_key(time_s=duration, node=src_ieee, code=code)
+        return
+
+    if ATTR_QR_CODE in msg:
+        src_ieee, code = msg[ATTR_QR_CODE]
+        _LOGGER.info("Allowing join for %s device with install code", src_ieee)
+        await zha_gateway.permit_with_key(time_s=duration, node=src_ieee, code=code)
+        return
+
+    if ieee:
+        _LOGGER.info("Permitting joins for %ss on %s device", duration, ieee)
+    else:
+        _LOGGER.info("Permitting joins for %ss", duration)
+    await zha_gateway.permit(time_s=duration, node=ieee)
+
+
+async def _permit(zha_gateway, msg):
+    """Permit joins for the provided duration via one of the supported methods."""
+
+    async def permit_runner():
+        end_time = datetime.utcnow() + timedelta(seconds=msg[ATTR_DURATION])
+
+        while True:
+            seconds_remaining = round((end_time - datetime.utcnow()).total_seconds())
+            permit_duration = min(seconds_remaining, 200)
+            if permit_duration <= 0:
+                return
+
+            # 254 seconds is the maximum allowable permit duration
+            await _permit_once(zha_gateway, msg, permit_duration)
+            await asyncio.sleep(permit_duration)
+
+    asyncio.create_task(permit_runner())
+
+
 @websocket_api.require_admin
 @websocket_api.async_response
 @websocket_api.websocket_command(
@@ -194,8 +238,6 @@ ClusterBinding = collections.namedtuple("ClusterBinding", "id endpoint_id type n
 async def websocket_permit_devices(hass, connection, msg):
     """Permit ZHA zigbee devices."""
     zha_gateway = hass.data[DATA_ZHA][DATA_ZHA_GATEWAY]
-    duration = msg.get(ATTR_DURATION)
-    ieee = msg.get(ATTR_IEEE)
 
     async def forward_messages(data):
         """Forward events to websocket."""
@@ -213,21 +255,9 @@ async def websocket_permit_devices(hass, connection, msg):
 
     connection.subscriptions[msg["id"]] = async_cleanup
     zha_gateway.async_enable_debug_mode()
-    if ATTR_SOURCE_IEEE in msg:
-        src_ieee = msg[ATTR_SOURCE_IEEE]
-        code = msg[ATTR_INSTALL_CODE]
-        _LOGGER.debug("Allowing join for %s device with install code", src_ieee)
-        await zha_gateway.application_controller.permit_with_key(
-            time_s=duration, node=src_ieee, code=code
-        )
-    elif ATTR_QR_CODE in msg:
-        src_ieee, code = msg[ATTR_QR_CODE]
-        _LOGGER.debug("Allowing join for %s device with install code", src_ieee)
-        await zha_gateway.application_controller.permit_with_key(
-            time_s=duration, node=src_ieee, code=code
-        )
-    else:
-        await zha_gateway.application_controller.permit(time_s=duration, node=ieee)
+
+    await _permit(zha_gateway.application_controller, msg)
+
     connection.send_result(msg["id"])
 
 
@@ -861,30 +891,7 @@ def async_load_api(hass):
 
     async def permit(service):
         """Allow devices to join this network."""
-        duration = service.data[ATTR_DURATION]
-        ieee = service.data.get(ATTR_IEEE)
-        if ATTR_SOURCE_IEEE in service.data:
-            src_ieee = service.data[ATTR_SOURCE_IEEE]
-            code = service.data[ATTR_INSTALL_CODE]
-            _LOGGER.info("Allowing join for %s device with install code", src_ieee)
-            await application_controller.permit_with_key(
-                time_s=duration, node=src_ieee, code=code
-            )
-            return
-
-        if ATTR_QR_CODE in service.data:
-            src_ieee, code = service.data[ATTR_QR_CODE]
-            _LOGGER.info("Allowing join for %s device with install code", src_ieee)
-            await application_controller.permit_with_key(
-                time_s=duration, node=src_ieee, code=code
-            )
-            return
-
-        if ieee:
-            _LOGGER.info("Permitting joins for %ss on %s device", duration, ieee)
-        else:
-            _LOGGER.info("Permitting joins for %ss", duration)
-        await application_controller.permit(time_s=duration, node=ieee)
+        return await _permit(application_controller, service.data)
 
     hass.helpers.service.async_register_admin_service(
         DOMAIN, SERVICE_PERMIT, permit, schema=SERVICE_SCHEMAS[SERVICE_PERMIT]
