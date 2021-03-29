@@ -1,4 +1,5 @@
 """Test ZHA API."""
+import asyncio
 from binascii import unhexlify
 import datetime
 from unittest.mock import AsyncMock, patch
@@ -419,10 +420,13 @@ async def test_permit_ha12_long_durations(
 
     skipped_s = 0
 
-    async def mock_sleep(seconds):
-        # Keep track of how long we would have slept and immediately return
+    async def mock_sleep(seconds, *, orig_sleep=asyncio.sleep):
+        # Keep track of how long we would have slept
         nonlocal skipped_s
         skipped_s += seconds
+
+        # And "sleep" for one one event loop tick
+        await orig_sleep(0)
 
     def offset_utcnow():
         # Pretend we have slept this long by offsetting the current time
