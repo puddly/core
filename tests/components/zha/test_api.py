@@ -1,5 +1,6 @@
 """Test ZHA API."""
 from binascii import unhexlify
+import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -397,6 +398,52 @@ async def test_permit_ha12(
     assert app_controller.permit.await_count == 1
     assert app_controller.permit.await_args[1]["time_s"] == duration
     assert app_controller.permit.await_args[1]["node"] == node
+    assert app_controller.permit_with_key.call_count == 0
+
+
+@pytest.mark.parametrize(
+    "params, durations, node",
+    (
+        ({ATTR_DURATION: 500}, [200, 200, 100], None),
+        (
+            {ATTR_DURATION: 321, ATTR_IEEE: "aa:bb:cc:dd:aa:bb:cc:dd"},
+            [200, 121],
+            zigpy.types.EUI64.convert("aa:bb:cc:dd:aa:bb:cc:dd"),
+        ),
+    ),
+)
+async def test_permit_ha12_long_durations(
+    hass, app_controller, hass_admin_user, params, durations, node
+):
+    """Test permit service with durations longer than 255s."""
+
+    skipped_s = 0
+
+    async def mock_sleep(seconds):
+        # Keep track of how long we would have slept and immediately return
+        nonlocal skipped_s
+        skipped_s += seconds
+
+    def offset_utcnow():
+        # Pretend we have slept this long by offsetting the current time
+        return datetime.datetime.utcnow() + datetime.timedelta(seconds=skipped_s)
+
+    with patch("asyncio.sleep", new=mock_sleep):
+        with patch("homeassistant.components.zha.api.datetime") as mock_dt:
+            mock_dt.utcnow.side_effect = offset_utcnow
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_PERMIT,
+                params,
+                True,
+                Context(user_id=hass_admin_user.id),
+            )
+
+    assert app_controller.permit.await_count == len(durations)
+    assert [a[1]["time_s"] for a in app_controller.permit.await_args_list] == durations
+
+    nodes = len(durations) * [node]
+    assert [a[1]["node"] for a in app_controller.permit.await_args_list] == nodes
     assert app_controller.permit_with_key.call_count == 0
 
 
