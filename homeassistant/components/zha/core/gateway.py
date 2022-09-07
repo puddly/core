@@ -170,8 +170,14 @@ class ZHAGateway:
         for attempt in range(STARTUP_RETRIES):
             try:
                 self.application_controller = await app_controller_cls.new(
-                    app_config, auto_form=True, start_radio=True
+                    app_config, start_radio=True
                 )
+            except (  # pylint: disable=try-except-raise
+                zigpy.exceptions.NetworkNotFormed,
+                zigpy.exceptions.NetworkSettingsInconsistent,
+            ):
+                # Immediately fail if the error will not be fixed by a retry
+                raise
             except Exception as exc:  # pylint: disable=broad-except
                 _LOGGER.warning(
                     "Couldn't start %s coordinator (attempt %s of %s)",
@@ -181,7 +187,7 @@ class ZHAGateway:
                     exc_info=exc,
                 )
 
-                if attempt == STARTUP_RETRIES - 1:
+                if attempt >= STARTUP_RETRIES - 1:
                     raise exc
 
                 await asyncio.sleep(STARTUP_FAILURE_DELAY_S)
