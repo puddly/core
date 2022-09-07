@@ -135,8 +135,6 @@ class BaseZhaFlow(FlowHandler):
         assert self._radio_type is not None
 
         config = self.hass.data.get(DATA_ZHA, {}).get(DATA_ZHA_CONFIG, {})
-        app_config = config.get(CONF_ZIGPY, {}).copy()
-
         database_path = config.get(
             CONF_DATABASE,
             self.hass.config.path(DEFAULT_DATABASE_NAME),
@@ -146,6 +144,7 @@ class BaseZhaFlow(FlowHandler):
         if not await self.hass.async_add_executor_job(os.path.exists, database_path):
             database_path = None
 
+        app_config = config.get(CONF_ZIGPY, {}).copy()
         app_config[CONF_DATABASE] = database_path
         app_config[CONF_DEVICE] = self._device_settings
         app_config = self._radio_type.controller.SCHEMA(app_config)
@@ -164,11 +163,6 @@ class BaseZhaFlow(FlowHandler):
         self, backup: zigpy.backups.NetworkBackup, **kwargs: Any
     ) -> None:
         """Restore the provided network backup, passing through kwargs."""
-        if self._current_settings is not None and self._current_settings.supersedes(
-            self._chosen_backup
-        ):
-            return
-
         async with self._connect_zigpy_app() as app:
             await app.backups.restore_backup(backup, **kwargs)
 
@@ -354,7 +348,7 @@ class BaseZhaFlow(FlowHandler):
                 )
 
             # The list of backups will always exist
-            self._backups = app.backups.backups.copy()
+            self._backups = app.backups.backups[::-1]
 
     async def async_step_choose_formation_strategy(
         self, user_input: dict[str, Any] | None = None
@@ -390,6 +384,10 @@ class BaseZhaFlow(FlowHandler):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Reuse the existing network settings on the stick."""
+        async with self._connect_zigpy_app() as app:
+            # Create a backup so that zigpy will consider the backup compatible
+            await app.backups.create_backup()
+
         return await self._async_create_radio_entity()
 
     async def async_step_form_new_network(
