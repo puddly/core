@@ -215,7 +215,7 @@
                 "title": "Reconfigure ZHA"
             },
             "instruct_unplug": {
-                "description": "Your old radio has been reset.  If the hardware is no longer needed, you can now unplug it.",
+                "description": "Your old radio has been reset.  If the hardware is no longer needed, you can now unplug it.\n\nYou can now plug in your new radio.",
                 "title": "Unplug your old radio"
             },
             "intent_migrate": {
