@@ -1097,6 +1097,23 @@ async def test_formation_strategy_form_new_network(pick_radio, mock_app, hass):
     assert result2["type"] == FlowResultType.CREATE_ENTRY
 
 
+async def test_formation_strategy_form_initial_network(pick_radio, mock_app, hass):
+    """Test forming a new network, with no previous settings on the radio."""
+    mock_app.load_network_info = MagicMock(side_effect=NetworkNotFormed())
+
+    result, port = await pick_radio(RadioType.ezsp)
+    result2 = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"next_step_id": config_flow.FORMATION_FORM_INITIAL_NETWORK},
+    )
+    await hass.async_block_till_done()
+
+    # A new network will be formed
+    mock_app.form_network.assert_called_once()
+
+    assert result2["type"] == FlowResultType.CREATE_ENTRY
+
+
 async def test_formation_strategy_reuse_settings(pick_radio, mock_app, hass):
     """Test reusing existing network settings."""
     result, port = await pick_radio(RadioType.ezsp)

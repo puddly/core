@@ -31,6 +31,7 @@
         "title": "Network Formation",
         "description": "Choose the network settings for your radio.",
         "menu_options": {
+          "form_initial_network": "Form a new network",
           "form_new_network": "Erase network settings and form a new network",
           "reuse_settings": "Keep radio network settings",
           "choose_automatic_backup": "Restore an automatic backup",
@@ -119,6 +120,7 @@
         "title": "[%key:component::zha::config::step::choose_formation_strategy::title%]",
         "description": "[%key:component::zha::config::step::choose_formation_strategy::description%]",
         "menu_options": {
+          "form_initial_network": "[%key:component::zha::config::step::choose_formation_strategy::menu_options::form_initial_network%]",
           "form_new_network": "[%key:component::zha::config::step::choose_formation_strategy::menu_options::form_new_network%]",
           "reuse_settings": "[%key:component::zha::config::step::choose_formation_strategy::menu_options::reuse_settings%]",
           "choose_automatic_backup": "[%key:component::zha::config::step::choose_formation_strategy::menu_options::choose_automatic_backup%]",

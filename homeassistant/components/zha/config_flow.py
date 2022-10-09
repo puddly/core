@@ -59,6 +59,7 @@ AUTOPROBE_RADIOS = (
 
 FORMATION_STRATEGY = "formation_strategy"
 FORMATION_FORM_NEW_NETWORK = "form_new_network"
+FORMATION_FORM_INITIAL_NETWORK = "form_initial_network"
 FORMATION_REUSE_SETTINGS = "reuse_settings"
 FORMATION_CHOOSE_AUTOMATIC_BACKUP = "choose_automatic_backup"
 FORMATION_UPLOAD_MANUAL_BACKUP = "upload_manual_backup"
@@ -404,7 +405,12 @@ class BaseZhaFlow(FlowHandler):
             strategies.append(FORMATION_REUSE_SETTINGS)
 
         strategies.append(FORMATION_UPLOAD_MANUAL_BACKUP)
-        strategies.append(FORMATION_FORM_NEW_NETWORK)
+
+        # Do not show "erase network settings" if there are none to erase
+        if self._current_settings is None:
+            strategies.append(FORMATION_FORM_INITIAL_NETWORK)
+        else:
+            strategies.append(FORMATION_FORM_NEW_NETWORK)
 
         return self.async_show_menu(
             step_id="choose_formation_strategy",
@@ -416,6 +422,13 @@ class BaseZhaFlow(FlowHandler):
     ) -> FlowResult:
         """Reuse the existing network settings on the stick."""
         return await self._async_create_radio_entity()
+
+    async def async_step_form_initial_network(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Form an initial network."""
+        # This step exists only for translations, it does nothing new
+        return await self.async_step_form_new_network(user_input)
 
     async def async_step_form_new_network(
         self, user_input: dict[str, Any] | None = None

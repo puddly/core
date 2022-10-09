@@ -22,6 +22,7 @@
                 "description": "Choose the network settings for your radio.",
                 "menu_options": {
                     "choose_automatic_backup": "Restore an automatic backup",
+                    "form_initial_network": "Form a new network",
                     "form_new_network": "Erase network settings and form a new network",
                     "reuse_settings": "Keep radio network settings",
                     "upload_manual_backup": "Upload a manual backup"
@@ -195,6 +196,7 @@
                 "description": "Choose the network settings for your radio.",
                 "menu_options": {
                     "choose_automatic_backup": "Restore an automatic backup",
+                    "form_initial_network": "Form a new network",
                     "form_new_network": "Erase network settings and form a new network",
                     "reuse_settings": "Keep radio network settings",
                     "upload_manual_backup": "Upload a manual backup"
