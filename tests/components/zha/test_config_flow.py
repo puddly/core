@@ -1072,7 +1072,7 @@ def pick_radio(hass):
 
 async def test_strategy_no_network_settings(pick_radio, mock_app, hass):
     """Test formation strategy when no network settings are present."""
-    mock_app.load_network_info = MagicMock(side_effect=NetworkNotFormed())
+    mock_app.load_network_info = AsyncMock(side_effect=NetworkNotFormed())
 
     result, port = await pick_radio(RadioType.ezsp)
     assert (
@@ -1099,7 +1099,7 @@ async def test_formation_strategy_form_new_network(pick_radio, mock_app, hass):
 
 async def test_formation_strategy_form_initial_network(pick_radio, mock_app, hass):
     """Test forming a new network, with no previous settings on the radio."""
-    mock_app.load_network_info = MagicMock(side_effect=NetworkNotFormed())
+    mock_app.load_network_info = AsyncMock(side_effect=NetworkNotFormed())
 
     result, port = await pick_radio(RadioType.ezsp)
     result2 = await hass.config_entries.flow.async_configure(
@@ -1411,7 +1411,7 @@ async def test_ezsp_restore_without_settings_change_ieee(
     """Test a manual backup on EZSP coordinators without settings (no IEEE write)."""
     # Fail to load settings
     with patch.object(
-        mock_app, "load_network_info", MagicMock(side_effect=NetworkNotFormed())
+        mock_app, "load_network_info", AsyncMock(side_effect=NetworkNotFormed())
     ):
         result, port = await pick_radio(RadioType.ezsp)
 
