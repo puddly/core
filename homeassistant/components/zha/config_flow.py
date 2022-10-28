@@ -754,16 +754,24 @@ class ZhaOptionsFlowHandler(BaseZhaFlow, config_entries.OptionsFlow):
         self._radio_type = RadioType[config_entry.data[CONF_RADIO_TYPE]]
         self._title = config_entry.title
 
+        self._should_restart_zha: bool = False
+
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Launch the options flow."""
-        if user_input is not None:
+
+        if (
+            user_input is not None
+            or self.config_entry.state is config_entries.ConfigEntryState.SETUP_ERROR
+        ):
             try:
                 await self.hass.config_entries.async_unload(self.config_entry.entry_id)
             except config_entries.OperationNotAllowed:
                 # ZHA is not running
                 pass
+            else:
+                self._should_restart_zha = True
 
             return await self.async_step_prompt_migrate_or_reconfigure()
 
@@ -838,9 +846,13 @@ class ZhaOptionsFlowHandler(BaseZhaFlow, config_entries.OptionsFlow):
 
     def async_remove(self):
         """Maybe reload ZHA if the flow is aborted."""
-        if self.config_entry.state not in (
-            config_entries.ConfigEntryState.SETUP_ERROR,
-            config_entries.ConfigEntryState.NOT_LOADED,
+        if (
+            self.config_entry.state
+            in (
+                config_entries.ConfigEntryState.LOADED,
+                config_entries.ConfigEntryState.SETUP_IN_PROGRESS,
+            )
+            or not self._should_restart_zha
         ):
             return
 
