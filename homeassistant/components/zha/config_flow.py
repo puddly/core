@@ -802,8 +802,11 @@ class ZhaOptionsFlowHandler(BaseZhaFlow, config_entries.OptionsFlow):
         """Confirm the user wants to reset their current radio."""
 
         if user_input is not None:
-            # Reset the current adapter
             async with self._connect_zigpy_app() as app:
+                # Create a complete backup
+                await app.backups.create_backup(load_devices=True)
+
+                # And reset the current adapter
                 await app.reset_network_info()
 
             return await self.async_step_instruct_unplug()
