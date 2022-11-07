@@ -67,12 +67,26 @@ def mock_app():
 
 
 @pytest.fixture
-def backup():
-    """Zigpy network backup with non-default settings."""
-    backup = zigpy.backups.NetworkBackup()
-    backup.node_info.ieee = zigpy.types.EUI64.convert("AA:BB:CC:DD:11:22:33:44")
+def make_backup():
+    """Zigpy network backup factory that creates unique backups with each call."""
+    num_calls = 0
 
-    return backup
+    def inner():
+        nonlocal num_calls
+
+        backup = zigpy.backups.NetworkBackup()
+        backup.node_info.ieee = zigpy.types.EUI64.convert(f"AABBCCDDEE{num_calls:06X}")
+        num_calls += 1
+
+        return backup
+
+    return inner
+
+
+@pytest.fixture
+def backup(make_backup):
+    """Zigpy network backup with non-default settings."""
+    return make_backup()
 
 
 def mock_detect_radio_type(radio_type=RadioType.ezsp, ret=True):
@@ -1311,13 +1325,13 @@ def test_format_backup_choice():
 )
 @patch("homeassistant.components.zha.async_setup_entry", AsyncMock(return_value=True))
 async def test_formation_strategy_restore_automatic_backup_ezsp(
-    pick_radio, mock_app, hass
+    pick_radio, mock_app, make_backup, hass
 ):
     """Test restoring an automatic backup (EZSP radio)."""
     mock_app.backups.backups = [
-        MagicMock(),
-        MagicMock(),
-        MagicMock(),
+        make_backup(),
+        make_backup(),
+        make_backup(),
     ]
     backup = mock_app.backups.backups[1]  # pick the second one
     backup.is_compatible_with = MagicMock(return_value=False)
@@ -1360,13 +1374,13 @@ async def test_formation_strategy_restore_automatic_backup_ezsp(
 @patch("homeassistant.components.zha.async_setup_entry", AsyncMock(return_value=True))
 @pytest.mark.parametrize("is_advanced", [True, False])
 async def test_formation_strategy_restore_automatic_backup_non_ezsp(
-    is_advanced, pick_radio, mock_app, hass
+    is_advanced, pick_radio, mock_app, make_backup, hass
 ):
     """Test restoring an automatic backup (non-EZSP radio)."""
     mock_app.backups.backups = [
-        MagicMock(),
-        MagicMock(),
-        MagicMock(),
+        make_backup(),
+        make_backup(),
+        make_backup(),
     ]
     backup = mock_app.backups.backups[1]  # pick the second one
     backup.is_compatible_with = MagicMock(return_value=False)
