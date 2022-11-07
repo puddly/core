@@ -381,6 +381,7 @@ class BaseZhaFlow(FlowHandler):
 
             # The list of backups will always exist
             self._backups = app.backups.backups.copy()
+            self._backups.sort(reverse=True, key=lambda b: b.backup_time)
 
     async def async_step_choose_formation_strategy(
         self, user_input: dict[str, Any] | None = None
