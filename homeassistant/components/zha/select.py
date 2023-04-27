@@ -173,19 +173,13 @@ class ZCLEnumSelectEntity(ZhaEntity, SelectEntity):
 
         Return entity if it is a supported configuration, otherwise return None
         """
-        cluster_handler = cluster_handlers[0]
-        if (
-            cls._select_attr in cluster_handler.cluster.unsupported_attributes
-            or cluster_handler.cluster.get(cls._select_attr) is None
-        ):
-            _LOGGER.debug(
-                "%s is not supported - skipping %s entity creation",
-                cls._select_attr,
-                cls.__name__,
-            )
-            return None
-
-        return cls(unique_id, zha_device, cluster_handlers, **kwargs)
+        return cls.create_entity_if_supported(
+            unique_id=unique_id,
+            zha_device=zha_device,
+            cluster_handlers=cluster_handlers,
+            zcl_attribute=cls._select_attr,
+            **kwargs,
+        )
 
     def __init__(
         self,

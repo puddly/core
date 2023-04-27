@@ -178,6 +178,47 @@ class ZhaEntity(BaseZhaEntity, RestoreEntity):
         """
         return cls(unique_id, zha_device, cluster_handlers, **kwargs)
 
+    @classmethod
+    def create_entity_if_supported(
+        cls,
+        unique_id: str,
+        zha_device: ZHADevice,
+        cluster_handlers: list[ClusterHandler],
+        zcl_attribute: str,
+        **kwargs: Any,
+    ) -> Self | None:
+        """Entity Factory.
+
+        Return entity if it is a supported configuration, otherwise return None
+        """
+
+        cluster = cluster_handlers[0].cluster
+
+        try:
+            cluster.find_attribute(zcl_attribute)
+        except KeyError:
+            attr_missing = True
+        else:
+            attr_missing = False
+
+        if attr_missing or zcl_attribute in cluster.unsupported_attributes:
+            _LOGGER.debug(
+                "%s is not supported - skipping %s entity creation",
+                zcl_attribute,
+                cls.__name__,
+            )
+            return None
+
+        if cluster.get(zcl_attribute) is None:
+            _LOGGER.debug(
+                "%s was not read - skipping %s entity creation",
+                zcl_attribute,
+                cls.__name__,
+            )
+            return None
+
+        return cls(unique_id, zha_device, cluster_handlers, **kwargs)
+
     @property
     def available(self) -> bool:
         """Return entity availability."""

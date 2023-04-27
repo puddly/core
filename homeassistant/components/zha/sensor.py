@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import enum
 import functools
+import logging
 import numbers
 import sys
 from typing import TYPE_CHECKING, Any
@@ -70,6 +71,8 @@ if TYPE_CHECKING:
     from .core.cluster_handlers import ClusterHandler
     from .core.device import ZHADevice
 
+_LOGGER = logging.getLogger(__name__)
+
 PARALLEL_UPDATES = 5
 
 BATTERY_SIZES = {
@@ -118,7 +121,7 @@ async def async_setup_entry(
 class Sensor(ZhaEntity, SensorEntity):
     """Base ZHA sensor."""
 
-    SENSOR_ATTR: int | str | None = None
+    SENSOR_ATTR: str
     _decimals: int = 1
     _divisor: int = 1
     _multiplier: int | float = 1
@@ -146,8 +149,21 @@ class Sensor(ZhaEntity, SensorEntity):
 
         Return entity if it is a supported configuration, otherwise return None
         """
-        cluster_handler = cluster_handlers[0]
-        if cls.SENSOR_ATTR in cluster_handler.cluster.unsupported_attributes:
+        cluster = cluster_handlers[0].cluster
+
+        try:
+            cluster.find_attribute(cls.SENSOR_ATTR)
+        except KeyError:
+            attr_missing = True
+        else:
+            attr_missing = False
+
+        if attr_missing or cls.SENSOR_ATTR in cluster.unsupported_attributes:
+            _LOGGER.debug(
+                "%s is not supported - skipping %s entity creation",
+                cls.SENSOR_ATTR,
+                cls.__name__,
+            )
             return None
 
         return cls(unique_id, zha_device, cluster_handlers, **kwargs)
@@ -268,7 +284,14 @@ class ElectricalMeasurement(Sensor):
             attrs["measurement_type"] = self._cluster_handler.measurement_type
 
         max_attr_name = f"{self.SENSOR_ATTR}_max"
-        if (max_v := self._cluster_handler.cluster.get(max_attr_name)) is not None:
+
+        try:
+            max_v = self._cluster_handler.cluster.get(max_attr_name)
+        except KeyError:
+            # apparent_power_max and power_factor_max don't exist
+            max_v = None
+
+        if max_v is not None:
             attrs[max_attr_name] = str(self.formatter(max_v))
 
         return attrs
@@ -417,7 +440,7 @@ class Illuminance(Sensor):
 class SmartEnergyMetering(Sensor):
     """Metering sensor."""
 
-    SENSOR_ATTR: int | str = "instantaneous_demand"
+    SENSOR_ATTR: str = "instantaneous_demand"
     _attr_device_class: SensorDeviceClass = SensorDeviceClass.POWER
     _attr_state_class: SensorStateClass = SensorStateClass.MEASUREMENT
     _attr_name: str = "Instantaneous demand"
@@ -470,7 +493,7 @@ class SmartEnergyMetering(Sensor):
 class SmartEnergySummation(SmartEnergyMetering, id_suffix="summation_delivered"):
     """Smart Energy Metering summation sensor."""
 
-    SENSOR_ATTR: int | str = "current_summ_delivered"
+    SENSOR_ATTR: str = "current_summ_delivered"
     _attr_device_class: SensorDeviceClass = SensorDeviceClass.ENERGY
     _attr_state_class: SensorStateClass = SensorStateClass.TOTAL_INCREASING
     _attr_name: str = "Summation delivered"
@@ -529,7 +552,7 @@ class Tier1SmartEnergySummation(
 ):
     """Tier 1 Smart Energy Metering summation sensor."""
 
-    SENSOR_ATTR: int | str = "current_tier1_summ_delivered"
+    SENSOR_ATTR: str = "current_tier1_summ_delivered"
     _attr_name: str = "Tier 1 summation delivered"
 
 
@@ -542,7 +565,7 @@ class Tier2SmartEnergySummation(
 ):
     """Tier 2 Smart Energy Metering summation sensor."""
 
-    SENSOR_ATTR: int | str = "current_tier2_summ_delivered"
+    SENSOR_ATTR: str = "current_tier2_summ_delivered"
     _attr_name: str = "Tier 2 summation delivered"
 
 
@@ -555,7 +578,7 @@ class Tier3SmartEnergySummation(
 ):
     """Tier 3 Smart Energy Metering summation sensor."""
 
-    SENSOR_ATTR: int | str = "current_tier3_summ_delivered"
+    SENSOR_ATTR: str = "current_tier3_summ_delivered"
     _attr_name: str = "Tier 3 summation delivered"
 
 
@@ -568,7 +591,7 @@ class Tier4SmartEnergySummation(
 ):
     """Tier 4 Smart Energy Metering summation sensor."""
 
-    SENSOR_ATTR: int | str = "current_tier4_summ_delivered"
+    SENSOR_ATTR: str = "current_tier4_summ_delivered"
     _attr_name: str = "Tier 4 summation delivered"
 
 
@@ -581,7 +604,7 @@ class Tier5SmartEnergySummation(
 ):
     """Tier 5 Smart Energy Metering summation sensor."""
 
-    SENSOR_ATTR: int | str = "current_tier5_summ_delivered"
+    SENSOR_ATTR: str = "current_tier5_summ_delivered"
     _attr_name: str = "Tier 5 summation delivered"
 
 
@@ -594,7 +617,7 @@ class Tier6SmartEnergySummation(
 ):
     """Tier 6 Smart Energy Metering summation sensor."""
 
-    SENSOR_ATTR: int | str = "current_tier6_summ_delivered"
+    SENSOR_ATTR: str = "current_tier6_summ_delivered"
     _attr_name: str = "Tier 6 summation delivered"
 
 

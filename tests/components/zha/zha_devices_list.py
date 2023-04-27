@@ -1,5 +1,6 @@
 """Example Zigbee Devices."""
 
+from zhaquirks.tuya import TuyaZBE000Cluster, TuyaZBExternalSwitchTypeCluster
 from zigpy.const import (
     SIG_ENDPOINTS,
     SIG_EP_INPUT,
@@ -15,6 +16,7 @@ from zigpy.types import Bool, uint8_t
 from zigpy.zcl.clusters.closures import DoorLock
 from zigpy.zcl.clusters.general import (
     Basic,
+    GreenPowerProxy,
     Groups,
     Identify,
     LevelControl,
@@ -23,6 +25,7 @@ from zigpy.zcl.clusters.general import (
     Ota,
     PowerConfiguration,
     Scenes,
+    Time,
 )
 from zigpy.zcl.clusters.lighting import Color
 from zigpy.zcl.clusters.measurement import (
@@ -4820,32 +4823,57 @@ DEVICES = [
         SIG_NODE_DESC: b"\x01@\x8e\x02\x10R\x00\x02\x00,\x00\x02\x00",
         SIG_ENDPOINTS: {
             1: {
-                SIG_EP_TYPE: 256,
-                DEV_SIG_EP_ID: 1,
-                SIG_EP_INPUT: [0, 4, 5, 6, 10],
-                SIG_EP_OUTPUT: [25],
-                SIG_EP_PROFILE: 260,
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.ON_OFF_LIGHT,
+                INPUT_CLUSTERS: [
+                    Basic.cluster_id,
+                    Identify.cluster_id,
+                    Groups.cluster_id,
+                    Scenes.cluster_id,
+                    OnOff.cluster_id,
+                    TuyaZBE000Cluster.cluster_id,
+                    TuyaZBExternalSwitchTypeCluster.cluster_id,
+                ],
+                OUTPUT_CLUSTERS: [Time.cluster_id, Ota.cluster_id],
             },
             2: {
-                SIG_EP_TYPE: 256,
-                DEV_SIG_EP_ID: 2,
-                SIG_EP_INPUT: [4, 5, 6],
-                SIG_EP_OUTPUT: [],
-                SIG_EP_PROFILE: 260,
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.ON_OFF_LIGHT,
+                INPUT_CLUSTERS: [
+                    Groups.cluster_id,
+                    Scenes.cluster_id,
+                    OnOff.cluster_id,
+                    TuyaZBExternalSwitchTypeCluster.cluster_id,
+                ],
+                OUTPUT_CLUSTERS: [],
             },
             3: {
-                SIG_EP_TYPE: 256,
-                DEV_SIG_EP_ID: 3,
-                SIG_EP_INPUT: [4, 5, 6],
-                SIG_EP_OUTPUT: [],
-                SIG_EP_PROFILE: 260,
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.ON_OFF_LIGHT,
+                INPUT_CLUSTERS: [
+                    Groups.cluster_id,
+                    Scenes.cluster_id,
+                    OnOff.cluster_id,
+                    TuyaZBExternalSwitchTypeCluster.cluster_id,
+                ],
+                OUTPUT_CLUSTERS: [],
             },
             4: {
-                SIG_EP_TYPE: 256,
-                DEV_SIG_EP_ID: 4,
-                SIG_EP_INPUT: [4, 5, 6],
-                SIG_EP_OUTPUT: [],
-                SIG_EP_PROFILE: 260,
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.ON_OFF_LIGHT,
+                INPUT_CLUSTERS: [
+                    Groups.cluster_id,
+                    Scenes.cluster_id,
+                    OnOff.cluster_id,
+                    TuyaZBExternalSwitchTypeCluster.cluster_id,
+                ],
+                OUTPUT_CLUSTERS: [],
+            },
+            242: {
+                PROFILE_ID: 41440,
+                DEVICE_TYPE: 97,
+                INPUT_CLUSTERS: [],
+                OUTPUT_CLUSTERS: [GreenPowerProxy.cluster_id],
             },
         },
         DEV_SIG_EVT_CLUSTER_HANDLERS: ["1:0x0019"],
@@ -4879,6 +4907,11 @@ DEVICES = [
                 DEV_SIG_CLUSTER_HANDLERS: ["on_off"],
                 DEV_SIG_ENT_MAP_CLASS: "Light",
                 DEV_SIG_ENT_MAP_ID: "light.tyzb01_ns1ndbww_ts0004_light_4",
+            },
+            ("button", "00:11:22:33:44:55:66:77-1-3"): {
+                DEV_SIG_CLUSTER_HANDLERS: ["identify"],
+                DEV_SIG_ENT_MAP_CLASS: "ZHAIdentifyButton",
+                DEV_SIG_ENT_MAP_ID: "button.tyzb01_ns1ndbww_ts0004_identify",
             },
         },
     },

@@ -396,19 +396,13 @@ class ZHANumberConfigurationEntity(ZhaEntity, NumberEntity):
 
         Return entity if it is a supported configuration, otherwise return None
         """
-        cluster_handler = cluster_handlers[0]
-        if (
-            cls._zcl_attribute in cluster_handler.cluster.unsupported_attributes
-            or cluster_handler.cluster.get(cls._zcl_attribute) is None
-        ):
-            _LOGGER.debug(
-                "%s is not supported - skipping %s entity creation",
-                cls._zcl_attribute,
-                cls.__name__,
-            )
-            return None
-
-        return cls(unique_id, zha_device, cluster_handlers, **kwargs)
+        return cls.create_entity_if_supported(
+            unique_id=unique_id,
+            zha_device=zha_device,
+            cluster_handlers=cluster_handlers,
+            zcl_attribute=cls._zcl_attribute,
+            **kwargs,
+        )
 
     def __init__(
         self,

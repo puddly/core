@@ -3,20 +3,11 @@ from unittest.mock import call, patch
 
 from freezegun import freeze_time
 import pytest
-from zhaquirks.const import (
-    DEVICE_TYPE,
-    ENDPOINTS,
-    INPUT_CLUSTERS,
-    OUTPUT_CLUSTERS,
-    PROFILE_ID,
-)
+from zhaquirks.tuya.ts0601_valve import ParksidePSBZS, ParksideTuyaValveManufCluster
 from zigpy.const import SIG_EP_PROFILE
 from zigpy.exceptions import ZigbeeException
 import zigpy.profiles.zha as zha
-from zigpy.quirks import CustomCluster, CustomDevice
-import zigpy.types as t
 import zigpy.zcl.clusters.general as general
-from zigpy.zcl.clusters.manufacturer_specific import ManufacturerSpecificCluster
 import zigpy.zcl.clusters.security as security
 import zigpy.zcl.foundation as zcl_f
 
@@ -49,6 +40,7 @@ def button_platform_only():
             Platform.NUMBER,
             Platform.SELECT,
             Platform.SENSOR,
+            Platform.SWITCH,
         ),
     ):
         yield
@@ -77,29 +69,6 @@ async def contact_sensor(hass, zigpy_device_mock, zha_device_joined_restored):
     return zha_device, zigpy_device.endpoints[1].identify
 
 
-class FrostLockQuirk(CustomDevice):
-    """Quirk with frost lock attribute."""
-
-    class TuyaManufCluster(CustomCluster, ManufacturerSpecificCluster):
-        """Tuya manufacturer specific cluster."""
-
-        cluster_id = 0xEF00
-        ep_attribute = "tuya_manufacturer"
-
-        attributes = {0xEF01: ("frost_lock_reset", t.Bool)}
-
-    replacement = {
-        ENDPOINTS: {
-            1: {
-                PROFILE_ID: zha.PROFILE_ID,
-                DEVICE_TYPE: zha.DeviceType.ON_OFF_SWITCH,
-                INPUT_CLUSTERS: [general.Basic.cluster_id, TuyaManufCluster],
-                OUTPUT_CLUSTERS: [],
-            },
-        }
-    }
-
-
 @pytest.fixture
 async def tuya_water_valve(hass, zigpy_device_mock, zha_device_joined_restored):
     """Tuya Water Valve fixture."""
@@ -107,13 +76,23 @@ async def tuya_water_valve(hass, zigpy_device_mock, zha_device_joined_restored):
     zigpy_device = zigpy_device_mock(
         {
             1: {
-                SIG_EP_INPUT: [general.Basic.cluster_id],
-                SIG_EP_OUTPUT: [],
+                SIG_EP_INPUT: [
+                    general.Basic.cluster_id,
+                    general.Identify.cluster_id,
+                    general.Groups.cluster_id,
+                    general.Scenes.cluster_id,
+                    general.OnOff.cluster_id,
+                    ParksideTuyaValveManufCluster.cluster_id,
+                ],
+                SIG_EP_OUTPUT: [
+                    general.Time.cluster_id,
+                    general.Ota.cluster_id,
+                ],
                 SIG_EP_TYPE: zha.DeviceType.ON_OFF_SWITCH,
             }
         },
         manufacturer="_TZE200_htnnfasr",
-        quirk=FrostLockQuirk,
+        quirk=ParksidePSBZS,
     )
 
     zha_device = await zha_device_joined_restored(zigpy_device)
@@ -167,7 +146,9 @@ async def test_frost_unlock(hass: HomeAssistant, tuya_water_valve) -> None:
     entity_registry = er.async_get(hass)
     zha_device, cluster = tuya_water_valve
     assert cluster is not None
-    entity_id = await find_entity_id(DOMAIN, zha_device, hass)
+    entity_id = await find_entity_id(
+        DOMAIN, zha_device, hass, qualifier="frost_lock_reset"
+    )
     assert entity_id is not None
 
     state = hass.states.get(entity_id)
