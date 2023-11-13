@@ -327,7 +327,7 @@ async def _async_setup_component(
 
         await asyncio.gather(
             *(
-                asyncio.create_task(
+                hass.create_task(
                     entry.async_setup(hass, integration=integration),
                     name=f"config entry setup {entry.title} {entry.domain} {entry.entry_id}",
                 )

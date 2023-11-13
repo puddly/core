@@ -74,7 +74,7 @@ async def _async_process_integration_platform_for_component(
     ]
     integrations = await async_get_integrations(hass, (component_name,))
     tasks = [
-        asyncio.create_task(
+        hass.create_task(
             _async_process_single_integration_platform_component(
                 hass,
                 component_name,

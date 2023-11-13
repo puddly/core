@@ -380,7 +380,7 @@ async def _async_stop(hass: ha.HomeAssistant, restart: bool):
     """Stop home assistant."""
     exit_code = RESTART_EXIT_CODE if restart else 0
     # Track trask in hass.data. No need to cleanup, we're stopping.
-    hass.data["homeassistant_stop"] = asyncio.create_task(hass.async_stop(exit_code))
+    hass.data["homeassistant_stop"] = hass.create_task(hass.async_stop(exit_code))
 
 
 @ha.callback

@@ -870,7 +870,7 @@ class ConfigEntriesFlowManager(data_entry_flow.FlowManager):
             init_done: asyncio.Future[None] = self.hass.loop.create_future()
             self._pending_import_flows.setdefault(handler, {})[flow_id] = init_done
 
-        task = asyncio.create_task(
+        task = self.hass.create_task(
             self._async_init(flow_id, handler, context, data),
             name=f"config entry flow {handler} {flow_id}",
         )
@@ -1152,7 +1152,7 @@ class ConfigEntries:
         """Call when Home Assistant is stopping."""
         await asyncio.gather(
             *(
-                asyncio.create_task(
+                self.hass.create_task(
                     entry.async_shutdown(),
                     name=f"config entry shutdown {entry.title} {entry.domain} {entry.entry_id}",
                 )
@@ -1397,7 +1397,7 @@ class ConfigEntries:
         """Forward the setup of an entry to platforms."""
         await asyncio.gather(
             *(
-                asyncio.create_task(
+                self.hass.create_task(
                     self.async_forward_entry_setup(entry, platform),
                     name=f"config entry forward setup {entry.title} {entry.domain} {entry.entry_id} {platform}",
                 )
@@ -1433,7 +1433,7 @@ class ConfigEntries:
         return all(
             await asyncio.gather(
                 *(
-                    asyncio.create_task(
+                    self.hass.create_task(
                         self.async_forward_entry_unload(entry, platform),
                         name=f"config entry forward unload {entry.title} {entry.domain} {entry.entry_id} {platform}",
                     )
@@ -2019,7 +2019,7 @@ class EntityRegistryDisabledHandler:
 
         await asyncio.gather(
             *(
-                asyncio.create_task(
+                self.hass.create_task(
                     self.hass.config_entries.async_reload(entry_id),
                     name="config entry reload {entry.title} {entry.domain} {entry.entry_id}",
                 )
