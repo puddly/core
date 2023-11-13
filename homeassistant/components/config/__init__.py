@@ -55,7 +55,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             key = f"{DOMAIN}.{panel_name}"
             hass.bus.async_fire(EVENT_COMPONENT_LOADED, {ATTR_COMPONENT: key})
 
-    tasks = [asyncio.create_task(setup_panel(panel_name)) for panel_name in SECTIONS]
+    tasks = [hass.create_task(setup_panel(panel_name)) for panel_name in SECTIONS]
 
     if tasks:
         await asyncio.wait(tasks)

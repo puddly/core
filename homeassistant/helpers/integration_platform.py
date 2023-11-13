@@ -128,7 +128,7 @@ async def async_process_integration_platforms(
     ]:
         integrations = await async_get_integrations(hass, top_level_components)
         tasks = [
-            asyncio.create_task(
+            hass.create_task(
                 _async_process_single_integration_platform_component(
                     hass, comp, integrations[comp], integration_platform
                 ),

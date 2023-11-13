@@ -48,7 +48,7 @@ def async_setup_discovery_view(hass: HomeAssistant, hassio):
             return
 
         jobs = [
-            asyncio.create_task(hassio_discovery.async_process_new(discovery))
+            hass.create_task(hassio_discovery.async_process_new(discovery))
             for discovery in data[ATTR_DISCOVERY]
         ]
         if jobs:
