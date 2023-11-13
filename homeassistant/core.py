@@ -584,13 +584,13 @@ class HomeAssistant:
         return task
 
     def create_task(
-        self, target: Coroutine[Any, Any, Any], name: str | None = None
-    ) -> None:
+        self, target: Coroutine[Any, Any, _R], name: str | None = None
+    ) -> asyncio.Task[_R]:
         """Add task to the executor pool.
 
         target: target to call.
         """
-        self.loop.call_soon_threadsafe(self.async_create_task, target, name)
+        return self.async_create_task(target, name)
 
     def _loop_create_task(
         self,
