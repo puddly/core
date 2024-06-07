@@ -829,9 +829,7 @@ class ZONNSMARTThermostat(Thermostat):
             )
 
 
-@MULTI_MATCH(
-    cluster_handler_names={"legrand_wire_pilot_cluster"},
-)
+@MULTI_MATCH(cluster_handler_names={"legrand_wire_pilot"})
 class LegrandWirePilotThermostat(ZhaEntity, ClimateEntity):
     """Legrand wire pilot Thermostat implementation."""
 
@@ -877,7 +875,7 @@ class LegrandWirePilotThermostat(ZhaEntity, ClimateEntity):
     def __init__(self, unique_id, zha_device, cluster_handlers, **kwargs):
         """Initialize ZHA Thermostat instance."""
         super().__init__(unique_id, zha_device, cluster_handlers, **kwargs)
-        self._wire_pilot_cluster = self.cluster_handlers["legrand_wire_pilot_cluster"]
+        self._wire_pilot_cluster = self.cluster_handlers["legrand_wire_pilot"]
         self._heat_mode: LegrandWirePilotHeatMode | None = None
 
     async def async_added_to_hass(self) -> None:
