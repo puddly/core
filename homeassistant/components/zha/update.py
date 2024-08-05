@@ -164,7 +164,7 @@ class ZHAFirmwareUpdateEntity(
     ) -> None:
         """Install an update."""
         try:
-            await self.entity_data.entity.async_install(version=version, backup=backup)
+            await self.entity_data.entity.async_install(version=version)
         except ZHAException as exc:
             raise HomeAssistantError(exc) from exc
         finally:
