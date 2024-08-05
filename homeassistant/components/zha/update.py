@@ -95,6 +95,7 @@ class ZHAFirmwareUpdateEntity(
         UpdateEntityFeature.INSTALL
         | UpdateEntityFeature.PROGRESS
         | UpdateEntityFeature.SPECIFIC_VERSION
+        | UpdateEntityFeature.RELEASE_NOTES
     )
 
     def __init__(self, entity_data: EntityData, **kwargs: Any) -> None:
@@ -142,6 +143,14 @@ class ZHAFirmwareUpdateEntity(
         for a short excerpt update description of max 255 characters.
         """
         return self.entity_data.entity.release_summary
+
+    async def async_release_notes(self) -> str | None:
+        """Return full release notes.
+
+        This is suitable for a long changelog that does not fit in the release_summary
+        property. The returned string can contain markdown.
+        """
+        return self.entity_data.entity.release_notes
 
     @property
     def release_url(self) -> str | None:
