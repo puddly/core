@@ -120,7 +120,7 @@ class HomeAssistantSkyConnectConfigFlow(
         """Create the config entry."""
         assert self._usb_info is not None
         assert self._hw_variant is not None
-        assert self._probed_firmware_type is not None
+        assert self._firmware_guess is not None
 
         return self.async_create_entry(
             title=self._hw_variant.full_name,
@@ -132,7 +132,8 @@ class HomeAssistantSkyConnectConfigFlow(
                 "description": self._usb_info.description,  # For backwards compatibility
                 "product": self._usb_info.description,
                 "device": self._usb_info.device,
-                "firmware": self._probed_firmware_type.value,
+                "firmware": self._firmware_guess.firmware_type.name,
+                "firmware_version": self._firmware_guess.firmware_version,
             },
         )
 
@@ -185,6 +186,7 @@ class HomeAssistantSkyConnectMultiPanOptionsFlowHandler(
             data={
                 **self.config_entry.data,
                 "firmware": ApplicationType.EZSP.value,
+                "firmware_version": None,
             },
             options=self.config_entry.options,
         )
@@ -213,13 +215,14 @@ class HomeAssistantSkyConnectOptionsFlowHandler(
 
     def _async_flow_finished(self) -> ConfigFlowResult:
         """Create the config entry."""
-        assert self._probed_firmware_type is not None
+        assert self._firmware_guess is not None
 
         self.hass.config_entries.async_update_entry(
             entry=self.config_entry,
             data={
                 **self.config_entry.data,
-                "firmware": self._probed_firmware_type.value,
+                "firmware": self._firmware_guess.firmware_type.value,
+                "firmware_version": self._firmware_guess.firmware_version,
             },
             options=self.config_entry.options,
         )

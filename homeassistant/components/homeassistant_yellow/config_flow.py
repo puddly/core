@@ -34,7 +34,14 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.helpers import discovery_flow, selector
 
-from .const import DOMAIN, FIRMWARE, RADIO_DEVICE, ZHA_DOMAIN, ZHA_HW_DISCOVERY_DATA
+from .const import (
+    DOMAIN,
+    FIRMWARE,
+    FIRMWARE_VERSION,
+    RADIO_DEVICE,
+    ZHA_DOMAIN,
+    ZHA_HW_DISCOVERY_DATA,
+)
 from .hardware import BOARD_NAME
 
 _LOGGER = logging.getLogger(__name__)
@@ -78,10 +85,13 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle the initial step."""
         # We do not actually use any portion of `BaseFirmwareConfigFlow` beyond this
-        await self._probe_firmware_type()
+        await self._probe_firmware()
 
         # Kick off ZHA hardware discovery automatically if Zigbee firmware is running
-        if self._probed_firmware_type is ApplicationType.EZSP:
+        if (
+            self._firmware_guess is not None
+            and self._firmware_guess.firmware_type is ApplicationType.EZSP
+        ):
             discovery_flow.async_create_flow(
                 self.hass,
                 ZHA_DOMAIN,
@@ -97,7 +107,16 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
             title=BOARD_NAME,
             data={
                 # Assume the firmware type is EZSP if we cannot probe it
-                FIRMWARE: (self._probed_firmware_type or ApplicationType.EZSP).value,
+                FIRMWARE: (
+                    self._firmware_guess.firmware_type
+                    if self._firmware_guess is not None
+                    else ApplicationType.EZSP
+                ).value,
+                FIRMWARE_VERSION: (
+                    self._firmware_guess.firmware_version
+                    if self._firmware_guess is not None
+                    else None
+                ),
             },
         )
 
@@ -279,13 +298,14 @@ class HomeAssistantYellowOptionsFlowHandler(
 
     def _async_flow_finished(self) -> ConfigFlowResult:
         """Create the config entry."""
-        assert self._probed_firmware_type is not None
+        assert self._firmware_guess is not None
 
         self.hass.config_entries.async_update_entry(
             entry=self.config_entry,
             data={
                 **self.config_entry.data,
-                FIRMWARE: self._probed_firmware_type.value,
+                FIRMWARE: self._firmware_guess.firmware_type.value,
+                FIRMWARE_VERSION: self._firmware_guess.firmware_version,
             },
         )
 

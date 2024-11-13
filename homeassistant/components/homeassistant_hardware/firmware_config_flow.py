@@ -30,6 +30,7 @@ from homeassistant.helpers.hassio import is_hassio
 from . import silabs_multiprotocol_addon
 from .const import ZHA_DOMAIN
 from .util import (
+    FirmwareGuess,
     FirmwareProbingFailed,
     get_otbr_addon_manager,
     get_zigbee_flasher_addon_manager,
@@ -52,7 +53,7 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Instantiate base flow."""
         super().__init__(*args, **kwargs)
 
-        self._probed_firmware_type: ApplicationType | None = None
+        self._firmware_guess: FirmwareGuess | None = None
         self._device: str | None = None  # To be set in a subclass
         self._hardware_name: str = "unknown"  # To be set in a subclass
 
@@ -64,8 +65,8 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Shared translation placeholders."""
         placeholders = {
             "firmware_type": (
-                self._probed_firmware_type.value
-                if self._probed_firmware_type is not None
+                self._firmware_guess.firmware_type.value
+                if self._firmware_guess is not None
                 else "unknown"
             ),
             "model": self._hardware_name,
@@ -120,12 +121,12 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
             description_placeholders=self._get_translation_placeholders(),
         )
 
-    async def _probe_firmware_type(self) -> bool:
+    async def _probe_firmware(self) -> bool:
         """Probe the firmware currently on the device."""
         assert self._device is not None
 
         try:
-            guess = await probe_silabs_firmware(
+            self._firmware_guess = await probe_silabs_firmware(
                 self._device,
                 probe_methods=(
                     # We probe in order of frequency: Zigbee, Thread, then multi-PAN
@@ -136,28 +137,27 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
                 ),
             )
         except (TimeoutError, FirmwareProbingFailed):
-            self._probed_firmware_type = None
+            _LOGGER.debug("Firmware probing failed", exc_info=True)
+            self._firmware_guess = None
+            return False
         else:
-            self._probed_firmware_type = guess.firmware_type
-
-        return self._probed_firmware_type in (
-            ApplicationType.EZSP,
-            ApplicationType.SPINEL,
-            ApplicationType.CPC,
-        )
+            return True
 
     async def async_step_pick_firmware_zigbee(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Pick Zigbee firmware."""
-        if not await self._probe_firmware_type():
+        if not await self._probe_firmware():
             return self.async_abort(
                 reason="unsupported_firmware",
                 description_placeholders=self._get_translation_placeholders(),
             )
 
         # Allow the stick to be used with ZHA without flashing
-        if self._probed_firmware_type == ApplicationType.EZSP:
+        if (
+            self._firmware_guess is not None
+            and self._firmware_guess.firmware_type == ApplicationType.EZSP
+        ):
             return await self.async_step_confirm_zigbee()
 
         if not is_hassio(self.hass):
@@ -343,7 +343,6 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Confirm Zigbee setup."""
         assert self._device is not None
         assert self._hardware_name is not None
-        self._probed_firmware_type = ApplicationType.EZSP
 
         if user_input is not None:
             await self.hass.config_entries.flow.async_init(
@@ -371,7 +370,7 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Pick Thread firmware."""
-        if not await self._probe_firmware_type():
+        if not await self._probe_firmware():
             return self.async_abort(
                 reason="unsupported_firmware",
                 description_placeholders=self._get_translation_placeholders(),
@@ -463,8 +462,6 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Confirm OTBR setup."""
         assert self._device is not None
 
-        self._probed_firmware_type = ApplicationType.SPINEL
-
         if user_input is not None:
             # OTBR discovery is done automatically via hassio
             return self._async_flow_finished()
@@ -507,8 +504,12 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
         super().__init__(*args, **kwargs)
 
         self._config_entry = config_entry
-
-        self._probed_firmware_type = ApplicationType(self.config_entry.data["firmware"])
+        self._firmware_guess = FirmwareGuess(
+            is_running=False,
+            firmware_type=ApplicationType(self.config_entry.data["firmware"]),
+            firmware_version=self.config_entry.data["firmware_version"],
+            source="unknown",
+        )
 
         # Make `context` a regular dictionary
         self.context = {}
