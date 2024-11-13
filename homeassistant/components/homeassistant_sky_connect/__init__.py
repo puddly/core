@@ -50,6 +50,21 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                 minor_version=2,
             )
 
+        if config_entry.minor_version == 2:
+            firmware_guess = await guess_firmware_type(
+                hass, config_entry.data["device"]
+            )
+
+            new_data = {**config_entry.data}
+            new_data["firmware_version"] = firmware_guess.firmware_version
+
+            hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data,
+                version=1,
+                minor_version=3,
+            )
+
         _LOGGER.debug(
             "Migration to version %s.%s successful",
             config_entry.version,

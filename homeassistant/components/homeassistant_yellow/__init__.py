@@ -18,7 +18,7 @@ from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import discovery_flow
 from homeassistant.helpers.hassio import is_hassio
 
-from .const import FIRMWARE, RADIO_DEVICE, ZHA_HW_DISCOVERY_DATA
+from .const import FIRMWARE, FIRMWARE_VERSION, RADIO_DEVICE, ZHA_HW_DISCOVERY_DATA
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +85,19 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                 data=new_data,
                 version=1,
                 minor_version=2,
+            )
+
+        if config_entry.minor_version == 2:
+            firmware_guess = await guess_firmware_type(hass, RADIO_DEVICE)
+
+            new_data = {**config_entry.data}
+            new_data[FIRMWARE_VERSION] = firmware_guess.firmware_version
+
+            hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data,
+                version=1,
+                minor_version=3,
             )
 
         _LOGGER.debug(

@@ -59,7 +59,7 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
     """Handle a config flow for Home Assistant Yellow."""
 
     VERSION = 1
-    MINOR_VERSION = 2
+    MINOR_VERSION = 3
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Instantiate config flow."""
