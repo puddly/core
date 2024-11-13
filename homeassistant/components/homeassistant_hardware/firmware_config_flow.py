@@ -15,6 +15,7 @@ from homeassistant.components.hassio import (
     AddonManager,
     AddonState,
 )
+from homeassistant.components.zha.homeassistant_hardware import get_radio_serial_port
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryBaseFlow,
@@ -31,7 +32,6 @@ from .const import ZHA_DOMAIN
 from .util import (
     FirmwareProbingFailed,
     get_otbr_addon_manager,
-    get_zha_device_path,
     get_zigbee_flasher_addon_manager,
     probe_silabs_firmware,
 )
@@ -553,7 +553,7 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
             include_ignore=False,
             include_disabled=True,
         ):
-            if get_zha_device_path(zha_entry) == self._device:
+            if get_radio_serial_port(self.hass, zha_entry) == self._device:
                 raise AbortFlow(
                     "zha_still_using_stick",
                     description_placeholders=self._get_translation_placeholders(),

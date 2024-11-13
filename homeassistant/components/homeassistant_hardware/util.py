@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 import logging
-from typing import cast
 
 from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
 
 from homeassistant.components.hassio import AddonError, AddonState
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.components.zha import homeassistant_hardware as zha_hardware
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.hassio import is_hassio
 from homeassistant.helpers.singleton import singleton
@@ -35,11 +35,6 @@ _LOGGER = logging.getLogger(__name__)
 
 class FirmwareProbingFailed(Exception):
     """Firmware probing failed."""
-
-
-def get_zha_device_path(config_entry: ConfigEntry) -> str | None:
-    """Get the device path from a ZHA config entry."""
-    return cast(str | None, config_entry.data.get("device", {}).get("path", None))
 
 
 @singleton(OTBR_ADDON_MANAGER_DATA)
@@ -81,14 +76,27 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
     device_guesses: defaultdict[str | None, list[FirmwareGuess]] = defaultdict(list)
 
     for zha_config_entry in hass.config_entries.async_entries(ZHA_DOMAIN):
-        zha_path = get_zha_device_path(zha_config_entry)
+        zha_path = zha_hardware.get_radio_serial_port(hass, zha_config_entry)
 
         if zha_path is not None:
+            if (
+                zha_hardware.get_radio_firmware_type(hass, zha_config_entry)
+                != ApplicationType.EZSP
+            ):
+                continue
+
+            try:
+                firmware_version = zha_hardware.get_radio_firmware_version(
+                    hass, zha_config_entry
+                )
+            except ValueError:
+                firmware_version = None
+
             device_guesses[zha_path].append(
                 FirmwareGuess(
                     is_running=(zha_config_entry.state == ConfigEntryState.LOADED),
                     firmware_type=ApplicationType.EZSP,
-                    firmware_version=None,
+                    firmware_version=firmware_version,
                     source="zha",
                 )
             )
