@@ -8,6 +8,7 @@ import logging
 from typing import cast
 
 from universal_silabs_flasher.const import ApplicationType
+from universal_silabs_flasher.flasher import Flasher
 
 from homeassistant.components.hassio import AddonError, AddonState
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
@@ -30,6 +31,10 @@ from .silabs_multiprotocol_addon import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class FirmwareProbingFailed(Exception):
+    """Firmware probing failed."""
 
 
 def get_zha_device_path(config_entry: ConfigEntry) -> str | None:
@@ -144,3 +149,26 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
     assert guesses
 
     return guesses[-1]
+
+
+async def probe_silabs_firmware(
+    device: str, *, probe_methods: ApplicationType | None = None
+) -> FirmwareGuess:
+    """Probe the running firmware on a Silabs device."""
+    flasher = Flasher(
+        device=device,
+        **({"probe_methods": probe_methods} if probe_methods else {}),
+    )
+
+    try:
+        await flasher.probe_app_type()
+    except RuntimeError as exc:
+        if str(exc) == "Failed to probe running application type":
+            raise FirmwareProbingFailed from exc
+
+    return FirmwareGuess(
+        is_running=True,
+        firmware_type=flasher.app_type,
+        firmware_version=str(flasher.app_version),
+        source="probe",
+    )

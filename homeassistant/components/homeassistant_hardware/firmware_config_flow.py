@@ -15,9 +15,6 @@ from homeassistant.components.hassio import (
     AddonManager,
     AddonState,
 )
-from homeassistant.components.zha.repairs.wrong_silabs_firmware import (
-    probe_silabs_firmware_type,
-)
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryBaseFlow,
@@ -32,9 +29,11 @@ from homeassistant.helpers.hassio import is_hassio
 from . import silabs_multiprotocol_addon
 from .const import ZHA_DOMAIN
 from .util import (
+    FirmwareProbingFailed,
     get_otbr_addon_manager,
     get_zha_device_path,
     get_zigbee_flasher_addon_manager,
+    probe_silabs_firmware,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -125,16 +124,21 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Probe the firmware currently on the device."""
         assert self._device is not None
 
-        self._probed_firmware_type = await probe_silabs_firmware_type(
-            self._device,
-            probe_methods=(
-                # We probe in order of frequency: Zigbee, Thread, then multi-PAN
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.CPC,
-            ),
-        )
+        try:
+            guess = await probe_silabs_firmware(
+                self._device,
+                probe_methods=(
+                    # We probe in order of frequency: Zigbee, Thread, then multi-PAN
+                    ApplicationType.GECKO_BOOTLOADER,
+                    ApplicationType.EZSP,
+                    ApplicationType.SPINEL,
+                    ApplicationType.CPC,
+                ),
+            )
+        except (TimeoutError, FirmwareProbingFailed):
+            self._probed_firmware_type = None
+        else:
+            self._probed_firmware_type = guess.firmware_type
 
         return self._probed_firmware_type in (
             ApplicationType.EZSP,
