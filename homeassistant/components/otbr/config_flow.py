@@ -179,7 +179,8 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
         url = f"http://{config['host']}:{config['port']}"
         config_entry_data = {
             "url": url,
-            "firmware": config.get("firmware", None),
+            "device": config.get("device", None),
+            "firmware_version": config.get("firmware", None),
         }
 
         if current_entries := self._async_current_entries():

@@ -15,7 +15,7 @@ from homeassistant.components.hassio import (
     AddonManager,
     AddonState,
 )
-from homeassistant.components.zha.homeassistant_hardware import get_radio_serial_port
+from homeassistant.components.zha.homeassistant_hardware import get_firmware_info
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryBaseFlow,
@@ -30,7 +30,7 @@ from homeassistant.helpers.hassio import is_hassio
 from . import silabs_multiprotocol_addon
 from .const import ZHA_DOMAIN
 from .util import (
-    FirmwareGuess,
+    FirmwareInfo,
     FirmwareProbingFailed,
     get_otbr_addon_manager,
     get_zigbee_flasher_addon_manager,
@@ -53,7 +53,7 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Instantiate base flow."""
         super().__init__(*args, **kwargs)
 
-        self._firmware_guess: FirmwareGuess | None = None
+        self._firmware_guess: FirmwareInfo | None = None
         self._device: str | None = None  # To be set in a subclass
         self._hardware_name: str = "unknown"  # To be set in a subclass
 
@@ -503,8 +503,10 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
         """Instantiate options flow."""
         super().__init__(*args, **kwargs)
 
+        assert self._device is not None
         self._config_entry = config_entry
-        self._firmware_guess = FirmwareGuess(
+        self._firmware_guess = FirmwareInfo(
+            device=self._device,
             is_running=False,
             firmware_type=ApplicationType(self.config_entry.data["firmware"]),
             firmware_version=self.config_entry.data["firmware_version"],
@@ -554,7 +556,9 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
             include_ignore=False,
             include_disabled=True,
         ):
-            if await get_radio_serial_port(self.hass, zha_entry) == self._device:
+            firmware_info = await get_firmware_info(self.hass, zha_entry)
+
+            if firmware_info is not None and firmware_info.device == self._device:
                 raise AbortFlow(
                     "zha_still_using_stick",
                     description_placeholders=self._get_translation_placeholders(),
