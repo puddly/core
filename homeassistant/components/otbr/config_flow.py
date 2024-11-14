@@ -80,6 +80,7 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Open Thread Border Router."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     async def _set_dataset(self, api: python_otbr_api.OTBR, otbr_url: str) -> None:
         """Connect to the OTBR and create or apply a dataset if it doesn't have one."""
@@ -188,7 +189,10 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle hassio discovery."""
         config = discovery_info.config
         url = f"http://{config['host']}:{config['port']}"
-        config_entry_data = {"url": url}
+        config_entry_data = {
+            "url": url,
+            "firmware": config.get("firmware", None),
+        }
 
         if current_entries := self._async_current_entries():
             for current_entry in current_entries:

@@ -88,3 +88,34 @@ async def async_unload_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> boo
 async def async_reload_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> None:
     """Handle an options update."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate old entry."""
+
+    _LOGGER.debug(
+        "Migrating from version %s:%s", config_entry.version, config_entry.minor_version
+    )
+
+    if config_entry.version == 1:
+        if config_entry.minor_version == 1:
+            new_data = {**config_entry.data}
+            new_data["firmware"] = None
+
+            hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data,
+                version=1,
+                minor_version=2,
+            )
+
+        _LOGGER.debug(
+            "Migration to version %s.%s successful",
+            config_entry.version,
+            config_entry.minor_version,
+        )
+
+        return True
+
+    # This means the user has downgraded from a future version
+    return False
