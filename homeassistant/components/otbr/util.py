@@ -15,6 +15,7 @@ from python_otbr_api import PENDING_DATASET_DELAY_TIMER, tlv_parser
 from python_otbr_api.pskc import compute_pskc
 from python_otbr_api.tlv_parser import MeshcopTLVType
 
+from homeassistant.components.hassio import AddonError, AddonManager
 from homeassistant.components.homeassistant_hardware.silabs_multiprotocol_addon import (
     MultiprotocolAddonManager,
     get_multiprotocol_addon_manager,
@@ -23,7 +24,7 @@ from homeassistant.components.homeassistant_hardware.silabs_multiprotocol_addon 
 )
 from homeassistant.components.homeassistant_yellow import RADIO_DEVICE as YELLOW_RADIO
 from homeassistant.config_entries import SOURCE_USER
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 
@@ -286,3 +287,21 @@ async def update_unique_id(
             border_agent_id_hex,
         )
         hass.config_entries.async_update_entry(entry, unique_id=border_agent_id_hex)
+
+
+@callback
+def get_addon_manager(hass: HomeAssistant, slug: str) -> AddonManager:
+    """Get the add-on manager."""
+    return AddonManager(hass, _LOGGER, "OpenThread Border Router", slug)
+
+
+async def get_otbr_addon_device(hass: HomeAssistant, addon_slug: str) -> str | None:
+    """Return config entry title."""
+    addon_manager = get_addon_manager(hass, addon_slug)
+
+    try:
+        addon_info = await addon_manager.async_get_addon_info()
+    except AddonError:
+        return None
+
+    return addon_info.options.get("device")

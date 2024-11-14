@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
 import logging
 from typing import TYPE_CHECKING, cast
 
@@ -13,12 +12,11 @@ from python_otbr_api.tlv_parser import MeshcopTLVType
 import voluptuous as vol
 import yarl
 
-from homeassistant.components.hassio import AddonError, AddonManager
 from homeassistant.components.homeassistant_yellow import hardware as yellow_hardware
 from homeassistant.components.thread import async_get_preferred_dataset
 from homeassistant.config_entries import SOURCE_HASSIO, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_URL
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
@@ -28,6 +26,7 @@ from .util import (
     compose_default_network_name,
     generate_random_pan_id,
     get_allowed_channel,
+    get_otbr_addon_device,
 )
 
 if TYPE_CHECKING:
@@ -38,12 +37,6 @@ _LOGGER = logging.getLogger(__name__)
 
 class AlreadyConfigured(HomeAssistantError):
     """Raised when the router is already configured."""
-
-
-@callback
-def get_addon_manager(hass: HomeAssistant, slug: str) -> AddonManager:
-    """Get the add-on manager."""
-    return AddonManager(hass, _LOGGER, "OpenThread Border Router", slug)
 
 
 def _is_yellow(hass: HomeAssistant) -> bool:
@@ -57,12 +50,7 @@ def _is_yellow(hass: HomeAssistant) -> bool:
 
 async def _title(hass: HomeAssistant, discovery_info: HassioServiceInfo) -> str:
     """Return config entry title."""
-    device: str | None = None
-    addon_manager = get_addon_manager(hass, discovery_info.slug)
-
-    with suppress(AddonError):
-        addon_info = await addon_manager.async_get_addon_info()
-        device = addon_info.options.get("device")
+    device = await get_otbr_addon_device(hass, discovery_info.slug)
 
     if _is_yellow(hass) and device == "/dev/ttyAMA1":
         return f"Home Assistant Yellow ({discovery_info.name})"
