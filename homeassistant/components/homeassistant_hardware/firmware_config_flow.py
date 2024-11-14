@@ -554,7 +554,7 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
             include_ignore=False,
             include_disabled=True,
         ):
-            if get_radio_serial_port(self.hass, zha_entry) == self._device:
+            if await get_radio_serial_port(self.hass, zha_entry) == self._device:
                 raise AbortFlow(
                     "zha_still_using_stick",
                     description_placeholders=self._get_translation_placeholders(),

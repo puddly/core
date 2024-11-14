@@ -13,18 +13,20 @@ from .const import CONF_RADIO_TYPE
 from .helpers import get_zha_gateway
 
 
-def get_radio_serial_port(hass: HomeAssistant, config_entry: ConfigEntry) -> str | None:
+async def get_radio_serial_port(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> str | None:
     """Return the serial port of the coordinator."""
     return config_entry.data.get(CONF_DEVICE, {}).get(CONF_DEVICE_PATH, None)
 
 
-def get_radio_model(hass: HomeAssistant, config_entry: ConfigEntry) -> str | None:
+async def get_radio_model(hass: HomeAssistant, config_entry: ConfigEntry) -> str | None:
     """Return the model of the coordinator."""
     assert config_entry is not None
     return get_zha_gateway(hass).state.node_info.model
 
 
-def get_radio_manufacturer(
+async def get_radio_manufacturer(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> str | None:
     """Return the manufacturer of the coordinator."""
@@ -32,7 +34,7 @@ def get_radio_manufacturer(
     return get_zha_gateway(hass).state.node_info.manufacturer
 
 
-def get_radio_firmware_version(
+async def get_radio_firmware_version(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> str | None:
     """Return the firmware version of the coordinator."""
@@ -40,7 +42,7 @@ def get_radio_firmware_version(
     return get_zha_gateway(hass).state.node_info.version
 
 
-def get_radio_firmware_type(
+async def get_radio_firmware_type(
     hass: HomeAssistant, config_entry: ConfigEntry
 ) -> ApplicationType | None:
     """Return the firmware version of the coordinator."""
