@@ -1,0 +1,68 @@
+"""SkyConnect models."""
+
+from dataclasses import dataclass
+from datetime import datetime
+import hashlib
+from typing import Any, Self
+
+from universal_silabs_flasher.firmware import FirmwareImage, parse_firmware_image
+from yarl import URL
+
+
+@dataclass(frozen=True)
+class FirmwareMetadata:
+    """Metadata for a remotely hosted firmware file."""
+
+    filename: str
+    checksum: str
+    size: int
+    release_notes: str | None
+    metadata: dict[str, str | int | None]
+    url: URL
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any], *, url_base: URL) -> Self:
+        """Construct from JSON data."""
+        return cls(
+            filename=data["filename"],
+            checksum=data["checksum"],
+            size=data["size"],
+            release_notes=data["release_notes"],
+            metadata=data["metadata"],
+            url=url_base / data["filename"],
+        )
+
+    def parse_firmware(self, data: bytes) -> FirmwareImage:
+        """Parse firmware bytes into a firmware image."""
+        if len(data) != self.size:
+            raise ValueError("Invalid firmware size")
+
+        algorithm, _, digest = self.checksum.partition(":")
+        hasher = hashlib.new(algorithm)
+        hasher.update(data)
+
+        if hasher.hexdigest() != digest:
+            raise ValueError("Invalid firmware checksum")
+
+        return parse_firmware_image(data)
+
+
+@dataclass(frozen=True)
+class FirmwareManifest:
+    """Manifest for a group of firmwares encompassing a firmware builder release."""
+
+    created_at: datetime
+    firmwares: tuple[FirmwareMetadata, ...]
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any], *, url: URL) -> Self:
+        """Construct from JSON data."""
+        return cls(
+            created_at=datetime.fromisoformat(data["metadata"]["created_at"]),
+            firmwares=tuple(
+                [
+                    FirmwareMetadata.from_json(f, url_base=url.parent)
+                    for f in data["firmwares"]
+                ]
+            ),
+        )
