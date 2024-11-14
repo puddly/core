@@ -11,7 +11,7 @@ from yarl import URL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .models import FirmwareManifest, FirmwareMetadata
+from .models import FirmwareManifest
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,16 +22,10 @@ NABU_CASA_FIRMWARE_RELEASES_URL = (
 )
 
 
-class FirmwareUpdateCoordinator(DataUpdateCoordinator[FirmwareMetadata]):
+class FirmwareUpdateCoordinator(DataUpdateCoordinator[FirmwareManifest]):
     """Coordinator to manage firmware updates."""
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        session: ClientSession,
-        url: str,
-        firmware: str,
-    ) -> None:
+    def __init__(self, hass: HomeAssistant, session: ClientSession) -> None:
         """Initialize the firmware update coordinator."""
         super().__init__(
             hass,
@@ -41,16 +35,14 @@ class FirmwareUpdateCoordinator(DataUpdateCoordinator[FirmwareMetadata]):
         )
         self.hass = hass
         self.session = session
-        self.url = url
-        self.firmware = firmware
 
         self._latest_release_url: str | None = None
-        self._latest_firmware: FirmwareMetadata | None = None
+        self._latest_manifest: FirmwareManifest | None = None
 
-    async def _async_update_data(self) -> FirmwareMetadata:
+    async def _async_update_data(self) -> FirmwareManifest:
         # Fetch the latest release metadata
         async with self.session.get(
-            self.url,
+            NABU_CASA_FIRMWARE_RELEASES_URL,
             headers={"X-GitHub-Api-Version": "2022-11-28"},
             raise_for_status=True,
         ) as rsp:
@@ -60,8 +52,8 @@ class FirmwareUpdateCoordinator(DataUpdateCoordinator[FirmwareMetadata]):
 
         if release_url == self._latest_release_url:
             _LOGGER.debug("GitHub release URL has not changed")
-            assert self._latest_firmware is not None
-            return self._latest_firmware
+            assert self._latest_manifest is not None
+            return self._latest_manifest
 
         try:
             manifest_asset = next(
@@ -81,19 +73,10 @@ class FirmwareUpdateCoordinator(DataUpdateCoordinator[FirmwareMetadata]):
         manifest = FirmwareManifest.from_json(
             manifest_obj, url=URL(manifest_asset["browser_download_url"])
         )
-        compatible_firmwares = [
-            f for f in manifest.firmwares if f.filename.startswith(self.firmware)
-        ]
-
-        if len(compatible_firmwares) != 1:
-            raise UpdateFailed(
-                f"Expected exactly one firmware for {self.firmware!r},"
-                f" got {len(compatible_firmwares)}"
-            )
 
         # Only set the release URL down here to make sure that we don't invalidate
         # future requests if an exception is raised halfway through this method
-        self._latest_firmware = compatible_firmwares[0]
+        self._latest_manifest = manifest
         self._latest_release_url = release_url
 
-        return self._latest_firmware
+        return self._latest_manifest

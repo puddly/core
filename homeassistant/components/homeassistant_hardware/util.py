@@ -81,8 +81,8 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
         (OTBR_DOMAIN, otbr_hardware),
     ):
         for config_entry in hass.config_entries.async_entries(domain):
-            firmware_guess = await hardware.get_firmware_info(hass, config_entry)
-            device_guesses[firmware_guess.device].append(firmware_guess)
+            firmware_info = await hardware.get_firmware_info(hass, config_entry)
+            device_guesses[firmware_info.device].append(firmware_info)
 
     if is_hassio(hass):
         multipan_addon_manager = await get_multiprotocol_addon_manager(hass)

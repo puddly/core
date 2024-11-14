@@ -33,12 +33,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             # Add-on startup with type service get started before Core, always (e.g. the
             # Multi-Protocol add-on). Probing the firmware would interfere with the add-on,
             # so we can't safely probe here. Instead, we must make an educated guess!
-            firmware_guess = await guess_firmware_type(
-                hass, config_entry.data["device"]
-            )
+            firmware_info = await guess_firmware_type(hass, config_entry.data["device"])
 
             new_data = {**config_entry.data}
-            new_data["firmware"] = firmware_guess.firmware_type.value
+            new_data["firmware"] = firmware_info.firmware_type.value
 
             # Copy `description` to `product`
             new_data["product"] = new_data["description"]
@@ -51,12 +49,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             )
 
         if config_entry.minor_version == 2:
-            firmware_guess = await guess_firmware_type(
-                hass, config_entry.data["device"]
-            )
+            firmware_info = await guess_firmware_type(hass, config_entry.data["device"])
 
             new_data = {**config_entry.data}
-            new_data["firmware_version"] = firmware_guess.firmware_version
+            new_data["firmware_version"] = firmware_info.firmware_version
 
             hass.config_entries.async_update_entry(
                 config_entry,

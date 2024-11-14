@@ -53,7 +53,7 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Instantiate base flow."""
         super().__init__(*args, **kwargs)
 
-        self._firmware_guess: FirmwareInfo | None = None
+        self._firmware_info: FirmwareInfo | None = None
         self._device: str | None = None  # To be set in a subclass
         self._hardware_name: str = "unknown"  # To be set in a subclass
 
@@ -65,8 +65,8 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Shared translation placeholders."""
         placeholders = {
             "firmware_type": (
-                self._firmware_guess.firmware_type.value
-                if self._firmware_guess is not None
+                self._firmware_info.firmware_type.value
+                if self._firmware_info is not None
                 else "unknown"
             ),
             "model": self._hardware_name,
@@ -126,7 +126,7 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         assert self._device is not None
 
         try:
-            self._firmware_guess = await probe_silabs_firmware(
+            self._firmware_info = await probe_silabs_firmware(
                 self._device,
                 probe_methods=(
                     # We probe in order of frequency: Zigbee, Thread, then multi-PAN
@@ -138,7 +138,7 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
             )
         except (TimeoutError, FirmwareProbingFailed):
             _LOGGER.debug("Firmware probing failed", exc_info=True)
-            self._firmware_guess = None
+            self._firmware_info = None
             return False
         else:
             return True
@@ -155,8 +155,8 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
 
         # Allow the stick to be used with ZHA without flashing
         if (
-            self._firmware_guess is not None
-            and self._firmware_guess.firmware_type == ApplicationType.EZSP
+            self._firmware_info is not None
+            and self._firmware_info.firmware_type == ApplicationType.EZSP
         ):
             return await self.async_step_confirm_zigbee()
 
@@ -505,7 +505,7 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
 
         assert self._device is not None
         self._config_entry = config_entry
-        self._firmware_guess = FirmwareInfo(
+        self._firmware_info = FirmwareInfo(
             device=self._device,
             is_running=False,
             firmware_type=ApplicationType(self.config_entry.data["firmware"]),

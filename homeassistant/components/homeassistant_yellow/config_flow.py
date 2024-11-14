@@ -89,8 +89,8 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
 
         # Kick off ZHA hardware discovery automatically if Zigbee firmware is running
         if (
-            self._firmware_guess is not None
-            and self._firmware_guess.firmware_type is ApplicationType.EZSP
+            self._firmware_info is not None
+            and self._firmware_info.firmware_type is ApplicationType.EZSP
         ):
             discovery_flow.async_create_flow(
                 self.hass,
@@ -108,13 +108,13 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
             data={
                 # Assume the firmware type is EZSP if we cannot probe it
                 FIRMWARE: (
-                    self._firmware_guess.firmware_type
-                    if self._firmware_guess is not None
+                    self._firmware_info.firmware_type
+                    if self._firmware_info is not None
                     else ApplicationType.EZSP
                 ).value,
                 FIRMWARE_VERSION: (
-                    self._firmware_guess.firmware_version
-                    if self._firmware_guess is not None
+                    self._firmware_info.firmware_version
+                    if self._firmware_info is not None
                     else None
                 ),
             },
@@ -298,14 +298,14 @@ class HomeAssistantYellowOptionsFlowHandler(
 
     def _async_flow_finished(self) -> ConfigFlowResult:
         """Create the config entry."""
-        assert self._firmware_guess is not None
+        assert self._firmware_info is not None
 
         self.hass.config_entries.async_update_entry(
             entry=self.config_entry,
             data={
                 **self.config_entry.data,
-                FIRMWARE: self._firmware_guess.firmware_type.value,
-                FIRMWARE_VERSION: self._firmware_guess.firmware_version,
+                FIRMWARE: self._firmware_info.firmware_type.value,
+                FIRMWARE_VERSION: self._firmware_info.firmware_version,
             },
         )
 
