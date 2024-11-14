@@ -132,7 +132,7 @@ class HomeAssistantSkyConnectConfigFlow(
                 "description": self._usb_info.description,  # For backwards compatibility
                 "product": self._usb_info.description,
                 "device": self._usb_info.device,
-                "firmware": self._firmware_info.firmware_type.name,
+                "firmware": self._firmware_info.firmware_type,
                 "firmware_version": self._firmware_info.firmware_version,
             },
         )

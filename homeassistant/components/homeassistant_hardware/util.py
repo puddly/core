@@ -10,8 +10,6 @@ from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
 
 from homeassistant.components.hassio import AddonError, AddonState, is_hassio
-from homeassistant.components.otbr import homeassistant_hardware as otbr_hardware
-from homeassistant.components.zha import homeassistant_hardware as zha_hardware
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.singleton import singleton
 
@@ -74,6 +72,13 @@ class FirmwareInfo:
 
 async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> FirmwareInfo:
     """Guess the firmware type based on installed addons and other integrations."""
+
+    # pylint: disable-next=import-outside-toplevel
+    from homeassistant.components.otbr import homeassistant_hardware as otbr_hardware
+
+    # pylint: disable-next=import-outside-toplevel
+    from homeassistant.components.zha import homeassistant_hardware as zha_hardware
+
     device_guesses: defaultdict[str | None, list[FirmwareInfo]] = defaultdict(list)
 
     for domain, hardware in (
@@ -131,7 +136,7 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
 
 
 async def probe_silabs_firmware(
-    device: str, *, probe_methods: ApplicationType | None = None
+    device: str, *, probe_methods: tuple[ApplicationType, ...] | None = None
 ) -> FirmwareInfo:
     """Probe the running firmware on a Silabs device."""
     flasher = Flasher(
@@ -145,10 +150,13 @@ async def probe_silabs_firmware(
         if str(exc) == "Failed to probe running application type":
             raise FirmwareProbingFailed from exc
 
+    # The flasher represents the version as a parsed object, not as a string
+    version = "".join(str(c.data) for c in flasher.app_version.components)
+
     return FirmwareInfo(
         device=device,
         is_running=True,
         firmware_type=flasher.app_type,
-        firmware_version=str(flasher.app_version),
+        firmware_version=version,
         source="probe",
     )

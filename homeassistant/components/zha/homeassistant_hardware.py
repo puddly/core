@@ -28,7 +28,7 @@ async def get_firmware_info(
     radio_type = RadioType[config_entry.data[CONF_RADIO_TYPE]]
 
     # We only support EZSP firmware for now
-    if radio_type != RadioType.EZSP:
+    if radio_type != RadioType.ezsp:
         return None
 
     device = config_entry.data.get(CONF_DEVICE, {}).get(CONF_DEVICE_PATH, None)

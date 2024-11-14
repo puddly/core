@@ -22,7 +22,6 @@ from homeassistant.components.homeassistant_hardware.silabs_multiprotocol_addon 
     is_multiprotocol_url,
     multi_pan_addon_using_device,
 )
-from homeassistant.components.homeassistant_yellow import RADIO_DEVICE as YELLOW_RADIO
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -35,6 +34,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+YELLOW_RADIO = "/dev/ttyAMA1"
 INFO_URL_SKY_CONNECT = (
     "https://skyconnect.home-assistant.io/multiprotocol-channel-missmatch"
 )
