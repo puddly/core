@@ -32,6 +32,17 @@ class FirmwareMetadata:
             url=url_base / data["filename"],
         )
 
+    def as_dict(self) -> dict[str, Any]:
+        """Return metadata as a dict."""
+        return {
+            "filename": self.filename,
+            "checksum": self.checksum,
+            "size": self.size,
+            "release_notes": self.release_notes,
+            "metadata": self.metadata,
+            "url": str(self.url),
+        }
+
     def parse_firmware(self, data: bytes) -> FirmwareImage:
         """Parse firmware bytes into a firmware image."""
         if len(data) != self.size:
@@ -51,13 +62,18 @@ class FirmwareMetadata:
 class FirmwareManifest:
     """Manifest for a group of firmwares encompassing a firmware builder release."""
 
+    url: URL
     created_at: datetime
     firmwares: tuple[FirmwareMetadata, ...]
 
     @classmethod
-    def from_json(cls, data: dict[str, Any], *, url: URL) -> Self:
+    def from_json(cls, data: dict[str, Any], *, url: URL | None = None) -> Self:
         """Construct from JSON data."""
+        if url is None:
+            url = URL(data["url"])
+
         return cls(
+            url=url,
             created_at=datetime.fromisoformat(data["metadata"]["created_at"]),
             firmwares=tuple(
                 [
@@ -66,3 +82,13 @@ class FirmwareManifest:
                 ]
             ),
         )
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return manifest as a dict."""
+        return {
+            "url": str(self.url),
+            "metadata": {
+                "created_at": self.created_at.isoformat(),
+            },
+            "firmwares": [f.as_dict() for f in self.firmwares],
+        }

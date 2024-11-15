@@ -28,6 +28,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import ExtraStoredData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -72,6 +73,31 @@ UPDATE_ENTITY_DESCRIPTIONS = {
         firmware_name="OpenThread RCP",
     ),
 }
+
+
+@dataclass
+class SkyConnectUpdateExtraStoredData(ExtraStoredData):
+    """Extra stored data for SkyConnect firmware update entity."""
+
+    firmware_manifest: FirmwareManifest | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a dict representation of the extra data."""
+        return {
+            "firmware_manifest": (
+                self.firmware_manifest.as_dict()
+                if self.firmware_manifest is not None
+                else None
+            )
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SkyConnectUpdateExtraStoredData:
+        """Initialize the extra data from a dict."""
+        if data["firmware_manifest"] is None:
+            return cls()
+
+        return cls(FirmwareManifest.from_json(data["firmware_manifest"]))
 
 
 async def async_setup_entry(
@@ -147,6 +173,19 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
             )
         )
 
+        if (extra_data := await self.async_get_last_extra_data()) and (
+            skyconnect_extra_data := SkyConnectUpdateExtraStoredData.from_dict(
+                extra_data.as_dict()
+            )
+        ):
+            self._latest_manifest = skyconnect_extra_data.firmware_manifest
+            self._maybe_recompute_state()
+
+    @property
+    def extra_restore_state_data(self) -> SkyConnectUpdateExtraStoredData:
+        """Return Matter specific state data to be restored."""
+        return SkyConnectUpdateExtraStoredData(firmware_manifest=self._latest_manifest)
+
     @callback
     def _on_config_entry_change(
         self, change: ConfigEntryChange, entry: ConfigEntry
@@ -161,10 +200,10 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
 
         self.async_write_ha_state()
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self._latest_manifest = self.coordinator.data
+    def _maybe_recompute_state(self) -> None:
+        """Recompute the state of the entity."""
+        if self._latest_manifest is None:
+            return
 
         self._latest_firmware = next(
             f
@@ -177,6 +216,12 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         )
         self._attr_release_summary = self._latest_firmware.release_notes
         self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._latest_manifest = self.coordinator.data
+        self._maybe_recompute_state()
 
     @property
     def installed_version(self) -> str | None:
