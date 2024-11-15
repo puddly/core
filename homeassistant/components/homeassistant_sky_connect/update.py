@@ -45,6 +45,7 @@ class SkyConnectUpdateEntityDescription(UpdateEntityDescription):
     fw_type: str
     version_key: str
     expected_firmware_type: ApplicationType
+    firmware_name: str
 
 
 UPDATE_ENTITY_DESCRIPTIONS = {
@@ -57,6 +58,7 @@ UPDATE_ENTITY_DESCRIPTIONS = {
         fw_type="skyconnect_zigbee_ncp",
         version_key="ezsp_version",
         expected_firmware_type=ApplicationType.EZSP,
+        firmware_name="EmberZNet",
     ),
     ApplicationType.SPINEL: SkyConnectUpdateEntityDescription(
         key="firmware",
@@ -67,6 +69,7 @@ UPDATE_ENTITY_DESCRIPTIONS = {
         fw_type="skyconnect_openthread_rcp",
         version_key="ot_rcp_version",
         expected_firmware_type=ApplicationType.SPINEL,
+        firmware_name="OpenThread RCP",
     ),
 }
 
@@ -116,15 +119,21 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         self._attr_unique_id = (
             f"{config_entry.data['serial_number']}_{self.entity_description.key}"
         )
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._config_entry.data["serial_number"])},
-            manufacturer=self._config_entry.data["manufacturer"],
-            model=self._config_entry.data["product"],
-            sw_version=self._config_entry.data["firmware_version"],
-        )
 
         self._latest_manifest: FirmwareManifest | None = None
         self._latest_firmware: FirmwareMetadata | None = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return the device information for this entity."""
+        firmware_name = self.entity_description.firmware_name
+
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._config_entry.data["serial_number"])},
+            manufacturer=self._config_entry.data["manufacturer"],
+            model=self._config_entry.data["product"],
+            sw_version=f'{firmware_name} {self._config_entry.data["firmware_version"]}',
+        )
 
     async def async_added_to_hass(self) -> None:
         """Handle entity which will be added."""
