@@ -17,11 +17,16 @@ from homeassistant.components.update import (
     UpdateEntityDescription,
     UpdateEntityFeature,
 )
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import (
+    SIGNAL_CONFIG_ENTRY_CHANGED,
+    ConfigEntry,
+    ConfigEntryChange,
+)
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -42,28 +47,28 @@ class SkyConnectUpdateEntityDescription(UpdateEntityDescription):
     expected_firmware_type: ApplicationType
 
 
-ZIGBEE_UPDATE_DESCRIPTION = SkyConnectUpdateEntityDescription(
-    key="firmware",
-    display_precision=0,
-    device_class=UpdateDeviceClass.FIRMWARE,
-    entity_category=EntityCategory.DIAGNOSTIC,
-    version_parser=lambda fw: fw.split(" ", 1)[0],
-    fw_type="skyconnect_zigbee_ncp",
-    version_key="ezsp_version",
-    expected_firmware_type=ApplicationType.EZSP,
-)
-
-
-THREAD_UPDATE_DESCRIPTION = SkyConnectUpdateEntityDescription(
-    key="firmware",
-    display_precision=0,
-    device_class=UpdateDeviceClass.FIRMWARE,
-    entity_category=EntityCategory.DIAGNOSTIC,
-    version_parser=lambda fw: fw,
-    fw_type="skyconnect_openthread_rcp",
-    version_key="ot_rcp_version",
-    expected_firmware_type=ApplicationType.SPINEL,
-)
+UPDATE_ENTITY_DESCRIPTIONS = {
+    ApplicationType.EZSP: SkyConnectUpdateEntityDescription(
+        key="firmware",
+        display_precision=0,
+        device_class=UpdateDeviceClass.FIRMWARE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        version_parser=lambda fw: fw.split(" ", 1)[0],
+        fw_type="skyconnect_zigbee_ncp",
+        version_key="ezsp_version",
+        expected_firmware_type=ApplicationType.EZSP,
+    ),
+    ApplicationType.SPINEL: SkyConnectUpdateEntityDescription(
+        key="firmware",
+        display_precision=0,
+        device_class=UpdateDeviceClass.FIRMWARE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        version_parser=lambda fw: fw,
+        fw_type="skyconnect_openthread_rcp",
+        version_key="ot_rcp_version",
+        expected_firmware_type=ApplicationType.SPINEL,
+    ),
+}
 
 
 async def async_setup_entry(
@@ -74,19 +79,13 @@ async def async_setup_entry(
     """Set up the firmware update config entry."""
 
     session = async_get_clientsession(hass)
-
-    if config_entry.data["firmware"] == "ezsp":
-        entity_description = ZIGBEE_UPDATE_DESCRIPTION
-    elif config_entry.data["firmware"] == "spinel":
-        entity_description = THREAD_UPDATE_DESCRIPTION
-    else:
-        return
+    firmware = ApplicationType(config_entry.data["firmware"])
 
     async_add_entities(
         [
             FirmwareUpdateEntity(
                 config_entry=config_entry,
-                entity_description=entity_description,
+                entity_description=UPDATE_ENTITY_DESCRIPTIONS[firmware],
                 update_coordinator=FirmwareUpdateCoordinator(hass, session),
             )
         ]
@@ -126,6 +125,32 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
 
         self._latest_manifest: FirmwareManifest | None = None
         self._latest_firmware: FirmwareMetadata | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Handle entity which will be added."""
+        await super().async_added_to_hass()
+
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_CONFIG_ENTRY_CHANGED,
+                self._on_config_entry_change,
+            )
+        )
+
+    @callback
+    def _on_config_entry_change(
+        self, change: ConfigEntryChange, entry: ConfigEntry
+    ) -> None:
+        """Handle config entry changes."""
+        if entry != self._config_entry:
+            return
+
+        # If the firmware version has changed, update the entity description
+        firmware = ApplicationType(self._config_entry.data["firmware"])
+        self.entity_description = UPDATE_ENTITY_DESCRIPTIONS[firmware]
+
+        self.async_write_ha_state()
 
     @callback
     def _handle_coordinator_update(self) -> None:

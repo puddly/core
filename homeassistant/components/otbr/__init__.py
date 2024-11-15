@@ -7,6 +7,10 @@ import logging
 import aiohttp
 import python_otbr_api
 
+from homeassistant.components.homeassistant_hardware.const import (
+    EVENT_FIRMWARE_INFO_LOADED,
+)
+from homeassistant.components.homeassistant_hardware.util import EventFirmwareInfoLoaded
 from homeassistant.components.thread import async_add_dataset
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -17,6 +21,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from . import websocket_api
 from .const import DOMAIN
+from .homeassistant_hardware import get_firmware_info
 from .util import (
     GetBorderAgentIdNotSupported,
     OTBRData,
@@ -76,6 +81,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> bool
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     entry.runtime_data = otbrdata
+
+    # Broadcast the detected firmware info
+    firmware_info = await get_firmware_info(hass, entry)
+    if firmware_info is not None:
+        firmware_info.is_running = True
+
+        hass.bus.async_fire(
+            EVENT_FIRMWARE_INFO_LOADED,
+            EventFirmwareInfoLoaded(
+                config_entry_id=entry.entry_id, firmware_info=firmware_info
+            ),
+        )
 
     return True
 

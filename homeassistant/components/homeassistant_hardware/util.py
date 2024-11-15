@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 import logging
+from typing import TypedDict
 
 from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
@@ -68,6 +69,13 @@ class FirmwareInfo:
     firmware_type: ApplicationType
     firmware_version: str | None
     source: str
+
+
+class EventFirmwareInfoLoaded(TypedDict):
+    """EVENT_FIRMWARE_INFO_LOADED data."""
+
+    config_entry_id: str
+    firmware_info: FirmwareInfo
 
 
 async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> FirmwareInfo:

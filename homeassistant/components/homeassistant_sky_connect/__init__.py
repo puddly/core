@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components.homeassistant_hardware.util import guess_firmware_type
+from homeassistant.components.homeassistant_hardware.const import (
+    EVENT_FIRMWARE_INFO_LOADED,
+)
+from homeassistant.components.homeassistant_hardware.util import (
+    EventFirmwareInfoLoaded,
+    guess_firmware_type,
+)
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -14,6 +20,25 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Set up a Home Assistant SkyConnect config entry."""
     await hass.config_entries.async_forward_entry_setups(config_entry, ["update"])
+
+    @callback
+    def event_state_change_listener(event: Event[EventFirmwareInfoLoaded]) -> None:
+        _LOGGER.debug("Firmware info event received: %s", event)
+
+        firmware_info = event.data["firmware_info"]
+
+        hass.config_entries.async_update_entry(
+            config_entry,
+            data={
+                **config_entry.data,
+                "firmware": firmware_info.firmware_type,
+                "firmware_version": firmware_info.firmware_version,
+            },
+        )
+
+    config_entry.async_on_unload(
+        hass.bus.async_listen(EVENT_FIRMWARE_INFO_LOADED, event_state_change_listener)
+    )
     return True
 
 
