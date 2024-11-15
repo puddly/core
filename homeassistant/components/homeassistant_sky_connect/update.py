@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import logging
 from typing import Any, cast
@@ -10,7 +11,10 @@ from typing import Any, cast
 from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
 
-from homeassistant.components.homeassistant_hardware.util import probe_silabs_firmware
+from homeassistant.components.homeassistant_hardware.util import (
+    guess_firmware_type,
+    probe_silabs_firmware,
+)
 from homeassistant.components.update import (
     UpdateDeviceClass,
     UpdateEntity,
@@ -237,6 +241,26 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         self._attr_update_percentage = (offset * 100) / total_size
         self.async_write_ha_state()
 
+    @asynccontextmanager
+    async def _temporarily_stop_owning_software(
+        self,
+    ) -> AsyncIterator[None]:
+        """Temporarily stop the software currently communicating with the SkyConnect."""
+
+        firmware_info = await guess_firmware_type(
+            self.hass, self._config_entry.data["device"]
+        )
+
+        _LOGGER.debug("Identified firmware info: %s", firmware_info)
+
+        # If no integration is talking to the stick, continue
+        if not firmware_info.is_running:
+            yield
+            return
+
+        # raise NotImplementedError("Stopping controlling software is not implemented")
+        yield
+
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
@@ -265,35 +289,36 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
             ),
         )
 
-        try:
-            # Enter the bootloader with indeterminate progress
-            self._attr_in_progress = True
-            self._attr_update_percentage = None
-            self.async_write_ha_state()
-            await flasher.enter_bootloader()
+        async with self._temporarily_stop_owning_software():
+            try:
+                # Enter the bootloader with indeterminate progress
+                self._attr_in_progress = True
+                self._attr_update_percentage = None
+                self.async_write_ha_state()
+                await flasher.enter_bootloader()
 
-            # Flash the firmware, with progress
-            await flasher.flash_firmware(
-                fw_image, progress_callback=self._update_progress
-            )
+                # Flash the firmware, with progress
+                await flasher.flash_firmware(
+                    fw_image, progress_callback=self._update_progress
+                )
 
-            # Probe the running application type with indeterminate progress
-            self._attr_update_percentage = None
-            self.async_write_ha_state()
-            firmware_info = await probe_silabs_firmware(
-                self._config_entry.data["device"],
-                probe_methods=(self.entity_description.expected_firmware_type,),
-            )
+                # Probe the running application type with indeterminate progress
+                self._attr_update_percentage = None
+                self.async_write_ha_state()
+                firmware_info = await probe_silabs_firmware(
+                    self._config_entry.data["device"],
+                    probe_methods=(self.entity_description.expected_firmware_type,),
+                )
 
-            # Update the config entry
-            self.hass.config_entries.async_update_entry(
-                self._config_entry,
-                data={
-                    **self._config_entry.data,
-                    "firmware": firmware_info.firmware_type,
-                    "firmware_version": firmware_info.firmware_version,
-                },
-            )
-        finally:
-            self._attr_in_progress = False
-            self.async_write_ha_state()
+                # Update the config entry
+                self.hass.config_entries.async_update_entry(
+                    self._config_entry,
+                    data={
+                        **self._config_entry.data,
+                        "firmware": firmware_info.firmware_type,
+                        "firmware_version": firmware_info.firmware_version,
+                    },
+                )
+            finally:
+                self._attr_in_progress = False
+                self.async_write_ha_state()
