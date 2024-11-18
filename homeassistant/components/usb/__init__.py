@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
 import dataclasses
+from datetime import datetime, timedelta
 import fnmatch
 import logging
 import os
@@ -27,6 +28,7 @@ from homeassistant.core import (
 from homeassistant.data_entry_flow import BaseServiceInfo
 from homeassistant.helpers import config_validation as cv, discovery_flow, system_info
 from homeassistant.helpers.debounce import Debouncer
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import USBMatcher, async_get_usb
 
@@ -40,6 +42,8 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 PORT_EVENT_CALLBACK_TYPE = Callable[[set[USBDevice], set[USBDevice]], None]
+
+POLLING_MONITOR_SCAN_PERIOD = timedelta(seconds=5)
 REQUEST_SCAN_COOLDOWN = 60  # 1 minute cooldown
 
 __all__ = [
@@ -251,25 +255,49 @@ class USBDiscovery:
             self._request_debouncer.async_shutdown()
 
     async def _async_start_monitor(self) -> None:
-        """Start monitoring hardware with pyudev."""
-        if not sys.platform.startswith("linux"):
+        fallback_to_polling = await self._async_start_monitor_udev()
+
+        if not fallback_to_polling:
             return
+
+        await self._async_start_monitor_polling()
+
+    async def _async_start_monitor_polling(self) -> None:
+        """Start monitoring hardware with polling."""
+
+        async def _scan(event_time: datetime) -> None:
+            await self._async_scan_serial()
+
+        stop_callback = async_track_time_interval(
+            self.hass, _scan, POLLING_MONITOR_SCAN_PERIOD
+        )
+
+        def _stop_polling(event: Event) -> None:
+            stop_callback()
+
+        self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_polling)
+
+    async def _async_start_monitor_udev(self) -> bool:
+        """Start monitoring hardware with pyudev. Returns True if polling is needed."""
+        if not sys.platform.startswith("linux"):
+            return True
         info = await system_info.async_get_system_info(self.hass)
         if info.get("docker"):
-            return
+            return False
 
         if not (
             observer := await self.hass.async_add_executor_job(
                 self._get_monitor_observer
             )
         ):
-            return
+            return True
 
         def _stop_observer(event: Event) -> None:
             observer.stop()
 
         self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _stop_observer)
         self.observer_active = True
+        return False
 
     def _get_monitor_observer(self) -> MonitorObserver | None:
         """Get the monitor observer.
