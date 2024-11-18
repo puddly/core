@@ -207,7 +207,6 @@ class HomeAssistantSkyConnectOptionsFlowHandler(
             self.config_entry.data["product"]
         )
         self._hardware_name = self._hw_variant.full_name
-        self._device = self._usb_info.device
 
         # Regenerate the translation placeholders
         self._get_translation_placeholders()

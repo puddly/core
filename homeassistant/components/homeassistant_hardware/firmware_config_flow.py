@@ -503,20 +503,22 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
         """Instantiate options flow."""
         super().__init__(*args, **kwargs)
 
+        self._device = config_entry.data["device"]
         assert self._device is not None
+
         self._config_entry = config_entry
         self._firmware_info = FirmwareInfo(
             device=self._device,
             is_running=False,
-            firmware_type=ApplicationType(self.config_entry.data["firmware"]),
-            firmware_version=self.config_entry.data["firmware_version"],
+            firmware_type=ApplicationType(config_entry.data["firmware"]),
+            firmware_version=config_entry.data["firmware_version"],
             source="unknown",
         )
 
         # Make `context` a regular dictionary
         self.context = {}
 
-        # Subclasses are expected to override `_device` and `_hardware_name`
+        # Subclasses are expected to override `_hardware_name`
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
