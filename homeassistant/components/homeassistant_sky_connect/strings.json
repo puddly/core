@@ -200,5 +200,8 @@
     "update": {
       "firmware": { "name": "Firmware" }
     }
+  },
+  "exceptions": {
+    "device_not_plugged_in": { "message": "The device is not plugged in" }
   }
 }
