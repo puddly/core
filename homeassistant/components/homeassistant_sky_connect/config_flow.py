@@ -14,11 +14,13 @@ from homeassistant.components.homeassistant_hardware.util import FirmwareType
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryBaseFlow,
+    ConfigEntryState,
     ConfigFlowContext,
     ConfigFlowResult,
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOCS_WEB_FLASHER_URL, DOMAIN, HardwareVariant
 from .util import get_hardware_variant, get_usb_service_info
@@ -201,6 +203,11 @@ class HomeAssistantSkyConnectOptionsFlowHandler(
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Instantiate options flow."""
         super().__init__(*args, **kwargs)
+
+        if self.config_entry.state != ConfigEntryState.LOADED:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="device_not_plugged_in"
+            )
 
         self._usb_info = get_usb_service_info(self.config_entry)
         self._hw_variant = HardwareVariant.from_usb_product_name(
