@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from universal_silabs_flasher.const import ApplicationType
 from zha.application.const import RadioType
 from zigpy.config import CONF_DEVICE, CONF_DEVICE_PATH
 
-from homeassistant.components.homeassistant_hardware.util import FirmwareInfo
+from homeassistant.components.homeassistant_hardware.util import (
+    FirmwareInfo,
+    FirmwareType,
+)
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
@@ -38,7 +40,7 @@ async def get_firmware_info(
     return FirmwareInfo(
         device=device,
         is_running=(config_entry.state == ConfigEntryState.LOADED),
-        firmware_type=ApplicationType.EZSP,
+        firmware_type=FirmwareType.ZIGBEE,
         firmware_version=firmware_version,
         source="zha",
     )

@@ -8,10 +8,10 @@ from dataclasses import dataclass
 import logging
 from typing import Any, cast
 
-from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
 
 from homeassistant.components.homeassistant_hardware.util import (
+    FirmwareType,
     guess_firmware_type,
     probe_silabs_firmware,
 )
@@ -49,12 +49,12 @@ class SkyConnectUpdateEntityDescription(UpdateEntityDescription):
     version_parser: Callable[[str], str]
     fw_type: str
     version_key: str
-    expected_firmware_type: ApplicationType
+    expected_firmware_type: FirmwareType
     firmware_name: str
 
 
 UPDATE_ENTITY_DESCRIPTIONS = {
-    ApplicationType.EZSP: SkyConnectUpdateEntityDescription(
+    FirmwareType.ZIGBEE: SkyConnectUpdateEntityDescription(
         key="firmware",
         display_precision=0,
         device_class=UpdateDeviceClass.FIRMWARE,
@@ -62,10 +62,10 @@ UPDATE_ENTITY_DESCRIPTIONS = {
         version_parser=lambda fw: fw.split(" ", 1)[0],
         fw_type="skyconnect_zigbee_ncp",
         version_key="ezsp_version",
-        expected_firmware_type=ApplicationType.EZSP,
+        expected_firmware_type=FirmwareType.ZIGBEE,
         firmware_name="EmberZNet",
     ),
-    ApplicationType.SPINEL: SkyConnectUpdateEntityDescription(
+    FirmwareType.THREAD: SkyConnectUpdateEntityDescription(
         key="firmware",
         display_precision=0,
         device_class=UpdateDeviceClass.FIRMWARE,
@@ -73,7 +73,7 @@ UPDATE_ENTITY_DESCRIPTIONS = {
         version_parser=lambda fw: fw,
         fw_type="skyconnect_openthread_rcp",
         version_key="ot_rcp_version",
-        expected_firmware_type=ApplicationType.SPINEL,
+        expected_firmware_type=FirmwareType.THREAD,
         firmware_name="OpenThread RCP",
     ),
 }
@@ -112,7 +112,7 @@ async def async_setup_entry(
     """Set up the firmware update config entry."""
 
     session = async_get_clientsession(hass)
-    firmware = ApplicationType(config_entry.data["firmware"])
+    firmware = FirmwareType(config_entry.data["firmware"])
 
     async_add_entities(
         [
@@ -199,7 +199,7 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
             return
 
         # If the firmware version has changed, update the entity description
-        firmware = ApplicationType(self._config_entry.data["firmware"])
+        firmware = FirmwareType(self._config_entry.data["firmware"])
         self.entity_description = UPDATE_ENTITY_DESCRIPTIONS[firmware]
 
         self.async_write_ha_state()
@@ -282,10 +282,10 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         flasher = Flasher(
             device=self._config_entry.data["device"],
             probe_methods=(
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.CPC,
+                FirmwareType.BOOTLOADER.as_application_type(),
+                FirmwareType.ZIGBEE.as_application_type(),
+                FirmwareType.THREAD.as_application_type(),
+                FirmwareType.MULTIPROTOCOL.as_application_type(),
             ),
         )
 

@@ -5,13 +5,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
-from universal_silabs_flasher.const import ApplicationType
-
 from homeassistant.components import usb
 from homeassistant.components.homeassistant_hardware import (
     firmware_config_flow,
     silabs_multiprotocol_addon,
 )
+from homeassistant.components.homeassistant_hardware.util import FirmwareType
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryBaseFlow,
@@ -79,9 +78,9 @@ class HomeAssistantSkyConnectConfigFlow(
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Return the options flow."""
-        firmware_type = ApplicationType(config_entry.data["firmware"])
+        firmware_type = FirmwareType(config_entry.data["firmware"])
 
-        if firmware_type is ApplicationType.CPC:
+        if firmware_type is FirmwareType.MULTIPROTOCOL:
             return HomeAssistantSkyConnectMultiPanOptionsFlowHandler(config_entry)
 
         return HomeAssistantSkyConnectOptionsFlowHandler(config_entry)
@@ -185,7 +184,7 @@ class HomeAssistantSkyConnectMultiPanOptionsFlowHandler(
             entry=self.config_entry,
             data={
                 **self.config_entry.data,
-                "firmware": ApplicationType.EZSP.value,
+                "firmware": FirmwareType.ZIGBEE.value,
                 "firmware_version": None,
             },
             options=self.config_entry.options,

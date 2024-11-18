@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import StrEnum
 import logging
-from typing import TypedDict
+from types import ModuleType
+from typing import Self, TypedDict
 
 from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
@@ -30,6 +32,36 @@ from .silabs_multiprotocol_addon import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class FirmwareType(StrEnum):
+    """Firmware type for Silicon Labs radios."""
+
+    THREAD = "spinel"
+    ZIGBEE = "ezsp"
+    MULTIPROTOCOL = "cpc"
+    BOOTLOADER = "bootloader"
+
+    @classmethod
+    def from_application_type(cls, application_type: ApplicationType) -> Self:
+        """Convert an ApplicationType to a FirmwareType."""
+        return cls(_APPLICATION_TYPE_TO_FIRMWARE_TYPE[application_type])
+
+    def as_application_type(self) -> ApplicationType:
+        """Convert a FirmwareType to an ApplicationType."""
+        return _FIRMWARE_TYPE_TO_APPLICATION_TYPE[self]
+
+
+_APPLICATION_TYPE_TO_FIRMWARE_TYPE = {
+    ApplicationType.SPINEL: FirmwareType.THREAD,
+    ApplicationType.EZSP: FirmwareType.ZIGBEE,
+    ApplicationType.CPC: FirmwareType.MULTIPROTOCOL,
+    ApplicationType.GECKO_BOOTLOADER: FirmwareType.BOOTLOADER,
+}
+
+_FIRMWARE_TYPE_TO_APPLICATION_TYPE = {
+    v: k for k, v in _APPLICATION_TYPE_TO_FIRMWARE_TYPE.items()
+}
 
 
 class FirmwareProbingFailed(Exception):
@@ -66,7 +98,7 @@ class FirmwareInfo:
 
     device: str
     is_running: bool
-    firmware_type: ApplicationType
+    firmware_type: FirmwareType
     firmware_version: str | None
     source: str
 
@@ -81,11 +113,22 @@ class EventFirmwareInfoLoaded(TypedDict):
 async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> FirmwareInfo:
     """Guess the firmware type based on installed addons and other integrations."""
 
-    # pylint: disable-next=import-outside-toplevel
-    from homeassistant.components.otbr import homeassistant_hardware as otbr_hardware
+    otbr_hardware: ModuleType | None
+    zha_hardware: ModuleType | None
 
-    # pylint: disable-next=import-outside-toplevel
-    from homeassistant.components.zha import homeassistant_hardware as zha_hardware
+    try:
+        # pylint: disable-next=import-outside-toplevel
+        from homeassistant.components.otbr import (
+            homeassistant_hardware as otbr_hardware,
+        )
+    except ImportError:
+        otbr_hardware = None
+
+    try:
+        # pylint: disable-next=import-outside-toplevel
+        from homeassistant.components.zha import homeassistant_hardware as zha_hardware
+    except ImportError:
+        zha_hardware = None
 
     device_guesses: defaultdict[str | None, list[FirmwareInfo]] = defaultdict(list)
 
@@ -93,6 +136,9 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
         (ZHA_DOMAIN, zha_hardware),
         (OTBR_DOMAIN, otbr_hardware),
     ):
+        if hardware is None:
+            continue
+
         for config_entry in hass.config_entries.async_entries(domain):
             firmware_info = await hardware.get_firmware_info(hass, config_entry)
             device_guesses[firmware_info.device].append(firmware_info)
@@ -115,7 +161,7 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
                             is_running=(
                                 multipan_addon_info.state == AddonState.RUNNING
                             ),
-                            firmware_type=ApplicationType.CPC,
+                            firmware_type=FirmwareType.MULTIPROTOCOL,
                             firmware_version=None,
                             source="multiprotocol",
                         )
@@ -126,7 +172,7 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
         return FirmwareInfo(
             device=device_path,
             is_running=False,
-            firmware_type=ApplicationType.EZSP,
+            firmware_type=FirmwareType.ZIGBEE,
             firmware_version=None,
             source="unknown",
         )
@@ -144,7 +190,7 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
 
 
 async def probe_silabs_firmware(
-    device: str, *, probe_methods: tuple[ApplicationType, ...] | None = None
+    device: str, *, probe_methods: tuple[FirmwareType, ...] | None = None
 ) -> FirmwareInfo:
     """Probe the running firmware on a Silabs device."""
     flasher = Flasher(

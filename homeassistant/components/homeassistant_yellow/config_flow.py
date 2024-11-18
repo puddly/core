@@ -8,7 +8,6 @@ import logging
 from typing import Any, final
 
 import aiohttp
-from universal_silabs_flasher.const import ApplicationType
 import voluptuous as vol
 
 from homeassistant.components.hassio import (
@@ -25,6 +24,7 @@ from homeassistant.components.homeassistant_hardware.silabs_multiprotocol_addon 
     OptionsFlowHandler as MultiprotocolOptionsFlowHandler,
     SerialPortSettings as MultiprotocolSerialPortSettings,
 )
+from homeassistant.components.homeassistant_hardware.util import FirmwareType
 from homeassistant.config_entries import (
     SOURCE_HARDWARE,
     ConfigEntry,
@@ -73,9 +73,9 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Return the options flow."""
-        firmware_type = ApplicationType(config_entry.data[FIRMWARE])
+        firmware_type = FirmwareType(config_entry.data[FIRMWARE])
 
-        if firmware_type is ApplicationType.CPC:
+        if firmware_type is FirmwareType.MULTIPROTOCOL:
             return HomeAssistantYellowMultiPanOptionsFlowHandler(config_entry)
 
         return HomeAssistantYellowOptionsFlowHandler(config_entry)
@@ -90,7 +90,7 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
         # Kick off ZHA hardware discovery automatically if Zigbee firmware is running
         if (
             self._firmware_info is not None
-            and self._firmware_info.firmware_type is ApplicationType.EZSP
+            and self._firmware_info.firmware_type is FirmwareType.ZIGBEE
         ):
             discovery_flow.async_create_flow(
                 self.hass,
@@ -106,11 +106,11 @@ class HomeAssistantYellowConfigFlow(BaseFirmwareConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title=BOARD_NAME,
             data={
-                # Assume the firmware type is EZSP if we cannot probe it
+                # Assume the firmware type is Zigbee, if we cannot probe it
                 FIRMWARE: (
                     self._firmware_info.firmware_type
                     if self._firmware_info is not None
-                    else ApplicationType.EZSP
+                    else FirmwareType.ZIGBEE
                 ).value,
                 FIRMWARE_VERSION: (
                     self._firmware_info.firmware_version
@@ -258,7 +258,7 @@ class HomeAssistantYellowMultiPanOptionsFlowHandler(
             entry=self.config_entry,
             data={
                 **self.config_entry.data,
-                FIRMWARE: ApplicationType.EZSP.value,
+                FIRMWARE: FirmwareType.ZIGBEE.value,
             },
         )
 

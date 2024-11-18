@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import cast
 
-from universal_silabs_flasher.const import ApplicationType
-
-from homeassistant.components.homeassistant_hardware.util import FirmwareInfo
+from homeassistant.components.homeassistant_hardware.util import (
+    FirmwareInfo,
+    FirmwareType,
+)
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
@@ -22,7 +23,7 @@ async def get_firmware_info(
     return FirmwareInfo(
         device=device,
         is_running=(config_entry.state == ConfigEntryState.LOADED),
-        firmware_type=ApplicationType.SPINEL,
+        firmware_type=FirmwareType.THREAD,
         firmware_version=cast(str | None, config_entry.data["firmware_version"]),
         source="otbr",
     )
