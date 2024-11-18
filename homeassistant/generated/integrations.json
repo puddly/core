@@ -2590,6 +2590,11 @@
       "integration_type": "virtual",
       "supported_by": "netatmo"
     },
+    "homeassistant_sky_connect": {
+      "name": "Home Assistant Connect ZBT-1",
+      "integration_type": "hub",
+      "config_flow": true
+    },
     "homematic": {
       "name": "Homematic",
       "integrations": {
