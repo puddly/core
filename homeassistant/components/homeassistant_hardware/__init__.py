@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback as hass_callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
@@ -63,6 +64,9 @@ def async_notify_firmware_info(
         for config_entry in hass.config_entries.async_entries(domain):
             if TYPE_CHECKING:
                 config_entry = cast(SkyConnectConfigEntry, config_entry)
+
+            if config_entry.state != ConfigEntryState.LOADED:
+                continue
 
             if config_entry.runtime_data.device == firmware_info.device:
                 config_entry.runtime_data.async_notify_firmware_info(firmware_info)
