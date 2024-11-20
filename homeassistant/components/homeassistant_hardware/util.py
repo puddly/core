@@ -286,7 +286,7 @@ async def probe_silabs_firmware(
 
     return FirmwareInfo(
         device=device,
-        firmware_type=flasher.app_type,
+        firmware_type=FirmwareType.from_application_type(flasher.app_type),
         firmware_version=version,
         owners=[],
         source="probe",
