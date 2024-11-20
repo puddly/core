@@ -46,10 +46,10 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         device=config_entry.data["device"],
         firmware_info=FirmwareInfo(
             device=config_entry.data["device"],
-            is_running=False,
             firmware_type=FirmwareType(config_entry.data["firmware"]),
             firmware_version=config_entry.data["firmware_version"],
             source=DOMAIN,
+            owners=[],
         ),
         serial_number=config_entry.data["serial_number"],
         hardware_variant=get_hardware_variant(config_entry),

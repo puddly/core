@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 import logging
 from typing import Any, cast
@@ -254,13 +254,11 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
 
         _LOGGER.debug("Identified firmware info: %s", firmware_info)
 
-        # If no integration is talking to the stick, continue
-        if not firmware_info.is_running:
-            yield
-            return
+        async with AsyncExitStack() as stack:
+            for owner in firmware_info.owners:
+                await stack.enter_async_context(owner.temporarily_stop(self.hass))
 
-        # raise NotImplementedError("Stopping controlling software is not implemented")
-        yield
+            yield
 
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
@@ -308,7 +306,9 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
                 self.async_write_ha_state()
                 firmware_info = await probe_silabs_firmware(
                     self._config_entry.data["device"],
-                    probe_methods=(self.entity_description.expected_firmware_type,),
+                    probe_methods=(
+                        self.entity_description.expected_firmware_type.as_application_type(),
+                    ),
                 )
 
                 # Update the config entry

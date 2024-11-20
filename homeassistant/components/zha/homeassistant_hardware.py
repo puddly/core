@@ -8,8 +8,9 @@ from zigpy.config import CONF_DEVICE, CONF_DEVICE_PATH
 from homeassistant.components.homeassistant_hardware.util import (
     FirmwareInfo,
     FirmwareType,
+    OwningIntegration,
 )
-from homeassistant.config_entries import ConfigEntry, ConfigEntryState
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_RADIO_TYPE, DOMAIN
@@ -39,8 +40,8 @@ async def get_firmware_info(
 
     return FirmwareInfo(
         device=device,
-        is_running=(config_entry.state == ConfigEntryState.LOADED),
         firmware_type=FirmwareType.ZIGBEE,
         firmware_version=firmware_version,
         source=DOMAIN,
+        owners=[OwningIntegration(config_entry_id=config_entry.entry_id)],
     )

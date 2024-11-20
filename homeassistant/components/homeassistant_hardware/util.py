@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 import logging
@@ -13,6 +15,7 @@ from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
 
 from homeassistant.components.hassio import AddonError, AddonState, is_hassio
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.singleton import singleton
 
@@ -93,14 +96,95 @@ def get_zigbee_flasher_addon_manager(hass: HomeAssistant) -> WaitingAddonManager
 
 
 @dataclass(kw_only=True)
+class OwningAddon:
+    """Owning add-on."""
+
+    slug: str
+
+    def _get_addon_manager(self, hass: HomeAssistant) -> WaitingAddonManager:
+        return WaitingAddonManager(
+            hass,
+            _LOGGER,
+            f"Add-on {self.slug}",
+            self.slug,
+        )
+
+    async def is_running(self, hass: HomeAssistant) -> bool:
+        """Check if the add-on is running."""
+        addon_manager = self._get_addon_manager(hass)
+
+        try:
+            addon_info = await addon_manager.async_get_addon_info()
+        except AddonError:
+            return False
+        else:
+            return addon_info.state == AddonState.RUNNING
+
+    @asynccontextmanager
+    async def temporarily_stop(self, hass: HomeAssistant) -> AsyncIterator[None]:
+        """Temporarily stop the add-on, restarting it after completion."""
+        addon_manager = self._get_addon_manager(hass)
+
+        try:
+            addon_info = await addon_manager.async_get_addon_info()
+        except AddonError:
+            yield
+            return
+
+        if addon_info.state != AddonState.RUNNING:
+            yield
+            return
+
+        try:
+            await addon_manager.async_stop_addon()
+            await addon_manager.async_wait_until_addon_state(AddonState.NOT_RUNNING)
+            yield
+        finally:
+            await addon_manager.async_start_addon_waiting()
+
+
+@dataclass(kw_only=True)
+class OwningIntegration:
+    """Owning integration."""
+
+    config_entry_id: str
+
+    async def is_running(self, hass: HomeAssistant) -> bool:
+        """Check if the integration is running."""
+        if (entry := hass.config_entries.async_get_entry(self.config_entry_id)) is None:
+            return False
+
+        return entry.state == ConfigEntryState.LOADED
+
+    @asynccontextmanager
+    async def temporarily_stop(self, hass: HomeAssistant) -> AsyncIterator[None]:
+        """Temporarily stop the integration, restarting it after completion."""
+        if (entry := hass.config_entries.async_get_entry(self.config_entry_id)) is None:
+            yield
+            return
+
+        if entry.state != ConfigEntryState.LOADED:
+            yield
+            return
+
+        await hass.config_entries.async_unload(entry.entry_id)
+
+        try:
+            yield
+        finally:
+            await hass.config_entries.async_setup(entry.entry_id)
+
+
+@dataclass(kw_only=True)
 class FirmwareInfo:
     """Firmware guess."""
 
     device: str
-    is_running: bool
     firmware_type: FirmwareType
     firmware_version: str | None
+
     source: str
+    owners: list[OwningAddon | OwningIntegration]
 
 
 async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> FirmwareInfo:
@@ -151,12 +235,12 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
                     device_guesses[multipan_path].append(
                         FirmwareInfo(
                             device=multipan_path,
-                            is_running=(
-                                multipan_addon_info.state == AddonState.RUNNING
-                            ),
                             firmware_type=FirmwareType.MULTIPROTOCOL,
                             firmware_version=None,
                             source="multiprotocol",
+                            owners=[
+                                OwningAddon(slug=multipan_addon_manager.addon_slug)
+                            ],
                         )
                     )
 
@@ -164,22 +248,22 @@ async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> Firmware
     if device_path not in device_guesses:
         return FirmwareInfo(
             device=device_path,
-            is_running=False,
             firmware_type=FirmwareType.ZIGBEE,
             firmware_version=None,
             source="unknown",
+            owners=[],
         )
 
-    # Prioritizes guesses that were pulled from a running addon or integration but keep
-    # the sort order we defined above
-    guesses = sorted(
-        device_guesses[device_path],
-        key=lambda guess: guess.is_running,
-    )
-
+    # Prioritize guesses that are pulled from a real source
+    guesses = [
+        (guess, sum([await owner.is_running(hass) for owner in guess.owners]))
+        for guess in device_guesses[device_path]
+    ]
+    guesses.sort(key=lambda p: p[1])
     assert guesses
 
-    return guesses[-1]
+    # Pick the best one
+    return guesses[-1][0]
 
 
 async def probe_silabs_firmware(
@@ -202,8 +286,8 @@ async def probe_silabs_firmware(
 
     return FirmwareInfo(
         device=device,
-        is_running=True,
         firmware_type=flasher.app_type,
         firmware_version=version,
+        owners=[],
         source="probe",
     )

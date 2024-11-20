@@ -509,10 +509,10 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
         self._config_entry = config_entry
         self._firmware_info = FirmwareInfo(
             device=self._device,
-            is_running=False,
             firmware_type=ApplicationType(config_entry.data["firmware"]),
             firmware_version=config_entry.data["firmware_version"],
             source="unknown",
+            owners=[],
         )
 
         # Make `context` a regular dictionary
