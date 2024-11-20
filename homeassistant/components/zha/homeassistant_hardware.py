@@ -12,7 +12,7 @@ from homeassistant.components.homeassistant_hardware.util import (
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_RADIO_TYPE
+from .const import CONF_RADIO_TYPE, DOMAIN
 from .helpers import get_zha_gateway
 
 
@@ -42,5 +42,5 @@ async def get_firmware_info(
         is_running=(config_entry.state == ConfigEntryState.LOADED),
         firmware_type=FirmwareType.ZIGBEE,
         firmware_version=firmware_version,
-        source="zha",
+        source=DOMAIN,
     )

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import logging
 from types import ModuleType
-from typing import Self, TypedDict
+from typing import Self
 
 from universal_silabs_flasher.const import ApplicationType
 from universal_silabs_flasher.flasher import Flasher
@@ -92,7 +92,7 @@ def get_zigbee_flasher_addon_manager(hass: HomeAssistant) -> WaitingAddonManager
     )
 
 
-@dataclass(slots=True, kw_only=True)
+@dataclass(kw_only=True)
 class FirmwareInfo:
     """Firmware guess."""
 
@@ -101,13 +101,6 @@ class FirmwareInfo:
     firmware_type: FirmwareType
     firmware_version: str | None
     source: str
-
-
-class EventFirmwareInfoLoaded(TypedDict):
-    """EVENT_FIRMWARE_INFO_LOADED data."""
-
-    config_entry_id: str
-    firmware_info: FirmwareInfo
 
 
 async def guess_firmware_type(hass: HomeAssistant, device_path: str) -> FirmwareInfo:

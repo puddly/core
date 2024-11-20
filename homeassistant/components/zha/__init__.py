@@ -12,10 +12,7 @@ from zha.zigbee.device import get_device_automation_triggers
 from zigpy.config import CONF_DATABASE, CONF_DEVICE, CONF_DEVICE_PATH
 from zigpy.exceptions import NetworkSettingsInconsistent, TransientConnectionError
 
-from homeassistant.components.homeassistant_hardware.const import (
-    EVENT_FIRMWARE_INFO_LOADED,
-)
-from homeassistant.components.homeassistant_hardware.util import EventFirmwareInfoLoaded
+from homeassistant.components.homeassistant_hardware import async_notify_firmware_info
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_TYPE,
@@ -232,13 +229,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     firmware_info = await get_firmware_info(hass, config_entry)
     if firmware_info is not None:
         firmware_info.is_running = True
-
-        hass.bus.async_fire(
-            EVENT_FIRMWARE_INFO_LOADED,
-            EventFirmwareInfoLoaded(
-                config_entry_id=config_entry.entry_id, firmware_info=firmware_info
-            ),
-        )
+        async_notify_firmware_info(hass, firmware_info)
 
     return True
 

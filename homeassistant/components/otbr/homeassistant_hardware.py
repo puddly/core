@@ -11,6 +11,8 @@ from homeassistant.components.homeassistant_hardware.util import (
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 
+from .const import DOMAIN
+
 
 async def get_firmware_info(
     hass: HomeAssistant, config_entry: ConfigEntry
@@ -25,5 +27,5 @@ async def get_firmware_info(
         is_running=(config_entry.state == ConfigEntryState.LOADED),
         firmware_type=FirmwareType.THREAD,
         firmware_version=cast(str | None, config_entry.data["firmware_version"]),
-        source="otbr",
+        source=DOMAIN,
     )

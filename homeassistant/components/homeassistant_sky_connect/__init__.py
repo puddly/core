@@ -2,24 +2,35 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import pathlib
 
-from homeassistant.components import usb
-from homeassistant.components.homeassistant_hardware.const import (
-    EVENT_FIRMWARE_INFO_LOADED,
-)
+from homeassistant.components import homeassistant_hardware, usb
 from homeassistant.components.homeassistant_hardware.util import (
-    EventFirmwareInfoLoaded,
+    FirmwareInfo,
+    FirmwareType,
     guess_firmware_type,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 
-from .const import DOMAIN
+from .const import DOMAIN, HardwareVariant
+from .util import get_hardware_variant
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(kw_only=True)
+class SkyConnectRuntimeData(homeassistant_hardware.HardwareRuntimeData):
+    """SkyConnect runtime data."""
+
+    hardware_variant: HardwareVariant
+    serial_number: str
+
+
+type SkyConnectConfigEntry = ConfigEntry[SkyConnectRuntimeData]
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -30,6 +41,19 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         raise ConfigEntryNotReady(
             translation_domain=DOMAIN, translation_key="device_not_plugged_in"
         )
+
+    config_entry.runtime_data = SkyConnectRuntimeData(
+        device=config_entry.data["device"],
+        firmware_info=FirmwareInfo(
+            device=config_entry.data["device"],
+            is_running=False,
+            firmware_type=FirmwareType(config_entry.data["firmware"]),
+            firmware_version=config_entry.data["firmware_version"],
+            source=DOMAIN,
+        ),
+        serial_number=config_entry.data["serial_number"],
+        hardware_variant=get_hardware_variant(config_entry),
+    )
 
     @callback
     def async_port_event(
@@ -48,11 +72,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
     )
 
     @callback
-    def event_state_change_listener(event: Event[EventFirmwareInfoLoaded]) -> None:
-        _LOGGER.debug("Firmware info event received: %s", event)
-
-        firmware_info = event.data["firmware_info"]
-
+    def async_firmware_info_update_callback(firmware_info: FirmwareInfo) -> None:
+        _LOGGER.debug("Firmware info update received: %s", firmware_info)
         hass.config_entries.async_update_entry(
             config_entry,
             data={
@@ -63,7 +84,9 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
         )
 
     config_entry.async_on_unload(
-        hass.bus.async_listen(EVENT_FIRMWARE_INFO_LOADED, event_state_change_listener)
+        config_entry.runtime_data.async_register_firmware_info_update_callback(
+            async_firmware_info_update_callback
+        )
     )
 
     await hass.config_entries.async_forward_entry_setups(config_entry, ["update"])

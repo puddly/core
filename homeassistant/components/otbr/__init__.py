@@ -7,10 +7,7 @@ import logging
 import aiohttp
 import python_otbr_api
 
-from homeassistant.components.homeassistant_hardware.const import (
-    EVENT_FIRMWARE_INFO_LOADED,
-)
-from homeassistant.components.homeassistant_hardware.util import EventFirmwareInfoLoaded
+from homeassistant.components.homeassistant_hardware import async_notify_firmware_info
 from homeassistant.components.thread import async_add_dataset
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -87,12 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> bool
     if firmware_info is not None:
         firmware_info.is_running = True
 
-        hass.bus.async_fire(
-            EVENT_FIRMWARE_INFO_LOADED,
-            EventFirmwareInfoLoaded(
-                config_entry_id=entry.entry_id, firmware_info=firmware_info
-            ),
-        )
+        async_notify_firmware_info(hass, firmware_info)
 
     return True
 
