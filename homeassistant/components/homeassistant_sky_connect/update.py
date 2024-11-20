@@ -163,6 +163,7 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
             manufacturer=self._config_entry.data["manufacturer"],
             model=self._config_entry.data["product"],
             sw_version=f'{firmware_name} {self._config_entry.data["firmware_version"]}',
+            serial_number=self._config_entry.data["serial_number"][:16],
         )
 
     async def async_added_to_hass(self) -> None:
