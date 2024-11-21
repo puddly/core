@@ -12,6 +12,8 @@ from python_otbr_api.tlv_parser import MeshcopTLVType
 import voluptuous as vol
 import yarl
 
+from homeassistant.components import usb
+from homeassistant.components.homeassistant_hardware import async_notify_firmware_info
 from homeassistant.components.homeassistant_yellow import hardware as yellow_hardware
 from homeassistant.components.thread import async_get_preferred_dataset
 from homeassistant.config_entries import SOURCE_HASSIO, ConfigFlow, ConfigFlowResult
@@ -22,6 +24,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
 from .const import DEFAULT_CHANNEL, DOMAIN
+from .homeassistant_hardware import get_firmware_info
 from .util import (
     compose_default_network_name,
     generate_random_pan_id,
@@ -176,36 +179,61 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle hassio discovery."""
         config = discovery_info.config
+
+        if (device := config.get("device")) is not None:
+            device = await self.hass.async_add_executor_job(
+                usb.get_serial_by_id, device
+            )
+
+        if (firmware := config.get("firmware")) is not None:
+            if "openthread" not in firmware.lower():
+                firmware = None
+            else:
+                firmware = firmware.strip()
+
         url = f"http://{config['host']}:{config['port']}"
         config_entry_data = {
             "url": url,
-            "device": config.get("device", None),
-            "firmware_version": config.get("firmware", None),
+            "device": device,
+            "firmware_version": firmware,
         }
 
         if current_entries := self._async_current_entries():
             for current_entry in current_entries:
                 if current_entry.source != SOURCE_HASSIO:
                     continue
-                current_url = yarl.URL(current_entry.data["url"])
+
+                current_config_entry_data = {
+                    "url": current_entry.data["url"],
+                    "device": current_entry.data["device"],
+                    "firmware_version": current_entry.data["firmware_version"],
+                }
+
                 if not (unique_id := current_entry.unique_id):
                     # The first version did not set a unique_id
                     # so if the entry does not have a unique_id
                     # we have to assume it's the first version
                     # This check can be removed in HA Core 2025.9
                     unique_id = discovery_info.uuid
-                if (
-                    unique_id != discovery_info.uuid
-                    or current_url.host != config["host"]
-                    or current_url.port == config["port"]
+
+                if unique_id != discovery_info.uuid or (
+                    yarl.URL(config_entry_data["url"]).host
+                    != yarl.URL(current_config_entry_data["url"]).host
                 ):
                     continue
-                # Update URL with the new port
+
+                # Update the config entry
                 self.hass.config_entries.async_update_entry(
                     current_entry,
                     data=config_entry_data,
                     unique_id=unique_id,  # Remove in HA Core 2025.9
                 )
+
+                # Broadcast a firmware info update
+                firmware_info = await get_firmware_info(self.hass, current_entry)
+                assert firmware_info is not None
+                async_notify_firmware_info(self.hass, firmware_info)
+
                 return self.async_abort(reason="already_configured")
 
         try:

@@ -82,8 +82,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> bool
     # Broadcast the detected firmware info
     firmware_info = await get_firmware_info(hass, entry)
     if firmware_info is not None:
-        firmware_info.is_running = True
-
         async_notify_firmware_info(hass, firmware_info)
 
     return True
