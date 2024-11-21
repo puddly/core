@@ -153,6 +153,15 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         )
 
     @property
+    def title(self) -> str:
+        """Title of the software.
+
+        This helps to differentiate between the device or entity name
+        versus the title of the software installed.
+        """
+        return self.entity_description.firmware_name
+
+    @property
     def device_info(self) -> DeviceInfo:
         """Return the device information for this entity."""
         firmware_name = self.entity_description.firmware_name
