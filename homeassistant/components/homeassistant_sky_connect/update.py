@@ -28,6 +28,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -186,6 +187,7 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         ):
             self._latest_manifest = skyconnect_extra_data.firmware_manifest
             self._maybe_recompute_state()
+            self.async_write_ha_state()
 
     @property
     def extra_restore_state_data(self) -> SkyConnectUpdateExtraStoredData:
@@ -200,10 +202,13 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         if entry != self._config_entry:
             return
 
-        # If the firmware version has changed, update the entity description
-        firmware = FirmwareType(self._config_entry.data["firmware"])
-        self.entity_description = UPDATE_ENTITY_DESCRIPTIONS[firmware]
+        # Update the firmware version in the device registry
+        device_registry = dr.async_get(self.hass)
+        device_registry.async_get_or_create(
+            config_entry_id=self._config_entry.entry_id, **self.device_info
+        )
 
+        self._maybe_recompute_state()
         self.async_write_ha_state()
 
     def _maybe_recompute_state(self) -> None:
@@ -225,13 +230,13 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         )
         self._attr_latest_version = self.entity_description.version_parser(version)
         self._attr_release_summary = self._latest_firmware.release_notes
-        self.async_write_ha_state()
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         self._latest_manifest = self.coordinator.data
         self._maybe_recompute_state()
+        self.async_write_ha_state()
 
     @property
     def installed_version(self) -> str | None:
