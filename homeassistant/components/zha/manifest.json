@@ -18,10 +18,9 @@
     "zigpy_xbee",
     "zigpy_zigate",
     "zigpy_znp",
-    "zha",
-    "universal_silabs_flasher"
+    "zha"
   ],
-  "requirements": ["universal-silabs-flasher==0.0.25", "zha==0.0.39"],
+  "requirements": ["zha==0.0.39"],
   "usb": [
     {
       "vid": "10C4",
