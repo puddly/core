@@ -112,13 +112,11 @@ async def async_setup_entry(
     """Set up the firmware update config entry."""
 
     session = async_get_clientsession(hass)
-    firmware = FirmwareType(config_entry.data["firmware"])
 
     async_add_entities(
         [
             FirmwareUpdateEntity(
                 config_entry=config_entry,
-                entity_description=UPDATE_ENTITY_DESCRIPTIONS[firmware],
                 update_coordinator=FirmwareUpdateCoordinator(hass, session),
             )
         ]
@@ -138,13 +136,11 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
     def __init__(
         self,
         config_entry: ConfigEntry,
-        entity_description: SkyConnectUpdateEntityDescription,
         update_coordinator: FirmwareUpdateCoordinator,
     ) -> None:
         """Initialize the SkyConnect firmware update entity."""
         super().__init__(update_coordinator)
 
-        self.entity_description = entity_description
         self._config_entry = config_entry
         self._attr_unique_id = (
             f"{config_entry.data['serial_number']}_{self.entity_description.key}"
@@ -152,6 +148,7 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
 
         self._latest_manifest: FirmwareManifest | None = None
         self._latest_firmware: FirmwareMetadata | None = None
+        self._maybe_recompute_state()
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -207,6 +204,9 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
 
     def _maybe_recompute_state(self) -> None:
         """Recompute the state of the entity."""
+        firmware = FirmwareType(self._config_entry.data["firmware"])
+        self.entity_description = UPDATE_ENTITY_DESCRIPTIONS[firmware]
+
         if self._latest_manifest is None:
             return
 
