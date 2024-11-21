@@ -202,14 +202,14 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         if entry != self._config_entry:
             return
 
+        self._maybe_recompute_state()
+        self.async_write_ha_state()
+
         # Update the firmware version in the device registry
         device_registry = dr.async_get(self.hass)
         device_registry.async_get_or_create(
             config_entry_id=self._config_entry.entry_id, **self.device_info
         )
-
-        self._maybe_recompute_state()
-        self.async_write_ha_state()
 
     def _maybe_recompute_state(self) -> None:
         """Recompute the state of the entity."""
