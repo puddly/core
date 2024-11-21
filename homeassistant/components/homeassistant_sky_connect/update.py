@@ -70,7 +70,7 @@ UPDATE_ENTITY_DESCRIPTIONS = {
         display_precision=0,
         device_class=UpdateDeviceClass.FIRMWARE,
         entity_category=EntityCategory.DIAGNOSTIC,
-        version_parser=lambda fw: fw,
+        version_parser=lambda fw: fw.split("/", 1)[1].split("_", 1)[0],
         fw_type="skyconnect_openthread_rcp",
         version_key="ot_rcp_version",
         expected_firmware_type=FirmwareType.THREAD,
@@ -142,24 +142,28 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         super().__init__(update_coordinator)
 
         self._config_entry = config_entry
-        self._attr_unique_id = (
-            f"{config_entry.data['serial_number']}_{self.entity_description.key}"
-        )
 
         self._latest_manifest: FirmwareManifest | None = None
         self._latest_firmware: FirmwareMetadata | None = None
         self._maybe_recompute_state()
 
+        self._attr_unique_id = (
+            f"{config_entry.data['serial_number']}_{self.entity_description.key}"
+        )
+
     @property
     def device_info(self) -> DeviceInfo:
         """Return the device information for this entity."""
         firmware_name = self.entity_description.firmware_name
+        firmware_version = self.entity_description.version_parser(
+            self._config_entry.data["firmware_version"]
+        )
 
         return DeviceInfo(
             identifiers={(DOMAIN, self._config_entry.data["serial_number"])},
             manufacturer=self._config_entry.data["manufacturer"],
             model=self._config_entry.data["product"],
-            sw_version=f'{firmware_name} {self._config_entry.data["firmware_version"]}',
+            sw_version=f"{firmware_name} {firmware_version}",
             serial_number=self._config_entry.data["serial_number"][:16],
         )
 
@@ -216,9 +220,10 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
             if f.filename.startswith(self.entity_description.fw_type)
         )
 
-        self._attr_latest_version = cast(
+        version = cast(
             str, self._latest_firmware.metadata[self.entity_description.version_key]
         )
+        self._attr_latest_version = self.entity_description.version_parser(version)
         self._attr_release_summary = self._latest_firmware.release_notes
         self.async_write_ha_state()
 
