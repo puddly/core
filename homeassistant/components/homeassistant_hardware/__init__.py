@@ -26,7 +26,7 @@ class HardwareRuntimeData:
     """Class to hold runtime data for Home Assistant Hardware."""
 
     device: str
-    firmware_info: FirmwareInfo | None = None
+    firmware_info: FirmwareInfo
 
     _firmware_info_update_callbacks: list[Callable[[FirmwareInfo], None]] = field(
         default_factory=list

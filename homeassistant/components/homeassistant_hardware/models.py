@@ -1,4 +1,4 @@
-"""SkyConnect models."""
+"""Home Assistant hardware models."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -21,15 +21,20 @@ class FirmwareMetadata:
     url: URL
 
     @classmethod
-    def from_json(cls, data: dict[str, Any], *, url_base: URL) -> Self:
+    def from_json(cls, data: dict[str, Any], *, url_base: URL | None = None) -> Self:
         """Construct from JSON data."""
+        if url_base is None:
+            url = URL(data["url"])
+        else:
+            url = url_base / data["filename"]
+
         return cls(
             filename=data["filename"],
             checksum=data["checksum"],
             size=data["size"],
             release_notes=data["release_notes"],
             metadata=data["metadata"],
-            url=url_base / data["filename"],
+            url=url,
         )
 
     def as_dict(self) -> dict[str, Any]:

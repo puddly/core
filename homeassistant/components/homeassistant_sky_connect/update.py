@@ -1,108 +1,30 @@
-"""SkyConnect firmware update entity."""
+"""Home Assistant Hardware base firmware update entity."""
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
-from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass
 import logging
-from typing import Any, cast
 
-from universal_silabs_flasher.flasher import Flasher
-
+from homeassistant.components.homeassistant_hardware.coordinator import (
+    FirmwareUpdateCoordinator,
+)
+from homeassistant.components.homeassistant_hardware.update import (
+    BaseFirmwareUpdateEntity,
+    FirmwareUpdateEntityDescription,
+)
 from homeassistant.components.homeassistant_hardware.util import (
+    FirmwareInfo,
     FirmwareType,
-    guess_firmware_type,
-    probe_silabs_firmware,
 )
-from homeassistant.components.update import (
-    UpdateDeviceClass,
-    UpdateEntity,
-    UpdateEntityDescription,
-    UpdateEntityFeature,
-)
-from homeassistant.config_entries import (
-    SIGNAL_CONFIG_ENTRY_CHANGED,
-    ConfigEntry,
-    ConfigEntryChange,
-)
+from homeassistant.components.update import UpdateDeviceClass
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import ExtraStoredData
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
-from .coordinator import FirmwareUpdateCoordinator
-from .models import FirmwareManifest, FirmwareMetadata
+from . import SkyConnectConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@dataclass(kw_only=True, frozen=True)
-class SkyConnectUpdateEntityDescription(UpdateEntityDescription):
-    """Describes SkyConnect firmware update entity."""
-
-    version_parser: Callable[[str], str]
-    fw_type: str
-    version_key: str
-    expected_firmware_type: FirmwareType
-    firmware_name: str
-
-
-UPDATE_ENTITY_DESCRIPTIONS = {
-    FirmwareType.ZIGBEE: SkyConnectUpdateEntityDescription(
-        key="firmware",
-        display_precision=0,
-        device_class=UpdateDeviceClass.FIRMWARE,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        version_parser=lambda fw: fw.split(" ", 1)[0],
-        fw_type="skyconnect_zigbee_ncp",
-        version_key="ezsp_version",
-        expected_firmware_type=FirmwareType.ZIGBEE,
-        firmware_name="EmberZNet",
-    ),
-    FirmwareType.THREAD: SkyConnectUpdateEntityDescription(
-        key="firmware",
-        display_precision=0,
-        device_class=UpdateDeviceClass.FIRMWARE,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        version_parser=lambda fw: fw.split("/", 1)[1].split("_", 1)[0],
-        fw_type="skyconnect_openthread_rcp",
-        version_key="ot_rcp_version",
-        expected_firmware_type=FirmwareType.THREAD,
-        firmware_name="OpenThread RCP",
-    ),
-}
-
-
-@dataclass
-class SkyConnectUpdateExtraStoredData(ExtraStoredData):
-    """Extra stored data for SkyConnect firmware update entity."""
-
-    firmware_manifest: FirmwareManifest | None = None
-
-    def as_dict(self) -> dict[str, Any]:
-        """Return a dict representation of the extra data."""
-        return {
-            "firmware_manifest": (
-                self.firmware_manifest.as_dict()
-                if self.firmware_manifest is not None
-                else None
-            )
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SkyConnectUpdateExtraStoredData:
-        """Initialize the extra data from a dict."""
-        if data["firmware_manifest"] is None:
-            return cls()
-
-        return cls(FirmwareManifest.from_json(data["firmware_manifest"]))
 
 
 async def async_setup_entry(
@@ -124,222 +46,61 @@ async def async_setup_entry(
     )
 
 
-class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateEntity):
-    """SkyConnect firmware update entity."""
+class FirmwareUpdateEntity(BaseFirmwareUpdateEntity):
+    """Base firmware update entity."""
 
-    entity_description: SkyConnectUpdateEntityDescription
+    firmware_entity_descriptions = {
+        FirmwareType.ZIGBEE: FirmwareUpdateEntityDescription(
+            key="firmware",
+            display_precision=0,
+            device_class=UpdateDeviceClass.FIRMWARE,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            version_parser=lambda fw: fw.split(" ", 1)[0],
+            fw_type="skyconnect_zigbee_ncp",
+            version_key="ezsp_version",
+            expected_firmware_type=FirmwareType.ZIGBEE,
+            firmware_name="EmberZNet",
+        ),
+        FirmwareType.THREAD: FirmwareUpdateEntityDescription(
+            key="firmware",
+            display_precision=0,
+            device_class=UpdateDeviceClass.FIRMWARE,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            version_parser=lambda fw: fw.split("/", 1)[1].split("_", 1)[0],
+            fw_type="skyconnect_openthread_rcp",
+            version_key="ot_rcp_version",
+            expected_firmware_type=FirmwareType.THREAD,
+            firmware_name="OpenThread RCP",
+        ),
+    }
 
-    _attr_supported_features = (
-        UpdateEntityFeature.INSTALL | UpdateEntityFeature.PROGRESS
-    )
-    _attr_has_entity_name = True
+    _config_entry: SkyConnectConfigEntry
 
     def __init__(
         self,
-        config_entry: ConfigEntry,
+        config_entry: SkyConnectConfigEntry,
         update_coordinator: FirmwareUpdateCoordinator,
     ) -> None:
         """Initialize the SkyConnect firmware update entity."""
-        super().__init__(update_coordinator)
-
-        self._config_entry = config_entry
-
-        self._latest_manifest: FirmwareManifest | None = None
-        self._latest_firmware: FirmwareMetadata | None = None
-        self._maybe_recompute_state()
-
+        super().__init__(config_entry, update_coordinator)
         self._attr_unique_id = (
             f"{config_entry.data['serial_number']}_{self.entity_description.key}"
         )
 
     @property
-    def title(self) -> str:
-        """Title of the software.
-
-        This helps to differentiate between the device or entity name
-        versus the title of the software installed.
-        """
-        return self.entity_description.firmware_name
+    def _current_firmware_info(self) -> FirmwareInfo:
+        return self._config_entry.runtime_data.firmware_info
 
     @property
-    def device_info(self) -> DeviceInfo:
-        """Return the device information for this entity."""
-        firmware_name = self.entity_description.firmware_name
-        firmware_version = self.entity_description.version_parser(
-            self._config_entry.data["firmware_version"]
+    def _current_device(self) -> str:
+        return self._config_entry.runtime_data.device
+
+    def _update_config_entry_after_install(self, firmware_info: FirmwareInfo) -> None:
+        self.hass.config_entries.async_update_entry(
+            self._config_entry,
+            data={
+                **self._config_entry.data,
+                "firmware": firmware_info.firmware_type,
+                "firmware_version": firmware_info.firmware_version,
+            },
         )
-
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._config_entry.data["serial_number"])},
-            manufacturer=self._config_entry.data["manufacturer"],
-            model=self._config_entry.data["product"],
-            sw_version=f"{firmware_name} {firmware_version}",
-            serial_number=self._config_entry.data["serial_number"][:16],
-        )
-
-    async def async_added_to_hass(self) -> None:
-        """Handle entity which will be added."""
-        await super().async_added_to_hass()
-
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass,
-                SIGNAL_CONFIG_ENTRY_CHANGED,
-                self._on_config_entry_change,
-            )
-        )
-
-        if (extra_data := await self.async_get_last_extra_data()) and (
-            skyconnect_extra_data := SkyConnectUpdateExtraStoredData.from_dict(
-                extra_data.as_dict()
-            )
-        ):
-            self._latest_manifest = skyconnect_extra_data.firmware_manifest
-            self._maybe_recompute_state()
-            self.async_write_ha_state()
-
-    @property
-    def extra_restore_state_data(self) -> SkyConnectUpdateExtraStoredData:
-        """Return Matter specific state data to be restored."""
-        return SkyConnectUpdateExtraStoredData(firmware_manifest=self._latest_manifest)
-
-    @callback
-    def _on_config_entry_change(
-        self, change: ConfigEntryChange, entry: ConfigEntry
-    ) -> None:
-        """Handle config entry changes."""
-        if entry != self._config_entry:
-            return
-
-        self._maybe_recompute_state()
-        self.async_write_ha_state()
-
-        # Update the firmware version in the device registry
-        device_registry = dr.async_get(self.hass)
-        device_registry.async_get_or_create(
-            config_entry_id=self._config_entry.entry_id, **self.device_info
-        )
-
-    def _maybe_recompute_state(self) -> None:
-        """Recompute the state of the entity."""
-        firmware = FirmwareType(self._config_entry.data["firmware"])
-        self.entity_description = UPDATE_ENTITY_DESCRIPTIONS[firmware]
-
-        if self._latest_manifest is None:
-            return
-
-        self._latest_firmware = next(
-            f
-            for f in self._latest_manifest.firmwares
-            if f.filename.startswith(self.entity_description.fw_type)
-        )
-
-        version = cast(
-            str, self._latest_firmware.metadata[self.entity_description.version_key]
-        )
-        self._attr_latest_version = self.entity_description.version_parser(version)
-        self._attr_release_summary = self._latest_firmware.release_notes
-        self._attr_release_url = str(self._latest_manifest.html_url)
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self._latest_manifest = self.coordinator.data
-        self._maybe_recompute_state()
-        self.async_write_ha_state()
-
-    @property
-    def installed_version(self) -> str | None:
-        """Version installed and in use."""
-        version = self._config_entry.data["firmware_version"]
-        if version is None:
-            return None
-
-        return self.entity_description.version_parser(version)
-
-    def _update_progress(self, offset: int, total_size: int) -> None:
-        """Handle update progress."""
-        self._attr_update_percentage = (offset * 100) / total_size
-        self.async_write_ha_state()
-
-    @asynccontextmanager
-    async def _temporarily_stop_owning_software(
-        self,
-    ) -> AsyncIterator[None]:
-        """Temporarily stop the software currently communicating with the SkyConnect."""
-
-        firmware_info = await guess_firmware_type(
-            self.hass, self._config_entry.data["device"]
-        )
-
-        _LOGGER.debug("Identified firmware info: %s", firmware_info)
-
-        async with AsyncExitStack() as stack:
-            for owner in firmware_info.owners:
-                await stack.enter_async_context(owner.temporarily_stop(self.hass))
-
-            yield
-
-    async def async_install(
-        self, version: str | None, backup: bool, **kwargs: Any
-    ) -> None:
-        """Install an update."""
-        assert self._latest_firmware is not None
-
-        async with self.coordinator.session.get(
-            self._latest_firmware.url, raise_for_status=True
-        ) as fw_rsp:
-            fw_data = await fw_rsp.read()
-
-        # At this point, we will have a valid firmware image that can be flasher
-        fw_image = await self.hass.async_add_executor_job(
-            self._latest_firmware.parse_firmware, fw_data
-        )
-
-        assert fw_image is not None
-
-        flasher = Flasher(
-            device=self._config_entry.data["device"],
-            probe_methods=(
-                FirmwareType.BOOTLOADER.as_application_type(),
-                FirmwareType.ZIGBEE.as_application_type(),
-                FirmwareType.THREAD.as_application_type(),
-                FirmwareType.MULTIPROTOCOL.as_application_type(),
-            ),
-        )
-
-        async with self._temporarily_stop_owning_software():
-            try:
-                # Enter the bootloader with indeterminate progress
-                self._attr_in_progress = True
-                self._attr_update_percentage = None
-                self.async_write_ha_state()
-                await flasher.enter_bootloader()
-
-                # Flash the firmware, with progress
-                await flasher.flash_firmware(
-                    fw_image, progress_callback=self._update_progress
-                )
-
-                # Probe the running application type with indeterminate progress
-                self._attr_update_percentage = None
-                self.async_write_ha_state()
-                firmware_info = await probe_silabs_firmware(
-                    self._config_entry.data["device"],
-                    probe_methods=(
-                        self.entity_description.expected_firmware_type.as_application_type(),
-                    ),
-                )
-
-                # Update the config entry
-                self.hass.config_entries.async_update_entry(
-                    self._config_entry,
-                    data={
-                        **self._config_entry.data,
-                        "firmware": firmware_info.firmware_type,
-                        "firmware_version": firmware_info.firmware_version,
-                    },
-                )
-            finally:
-                self._attr_in_progress = False
-                self.async_write_ha_state()
