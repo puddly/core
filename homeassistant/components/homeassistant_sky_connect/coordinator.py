@@ -72,7 +72,9 @@ class FirmwareUpdateCoordinator(DataUpdateCoordinator[FirmwareManifest]):
             manifest_obj = await rsp.json(content_type=None)
 
         manifest = FirmwareManifest.from_json(
-            manifest_obj, url=URL(manifest_asset["browser_download_url"])
+            manifest_obj,
+            html_url=URL(release_url),
+            url=URL(manifest_asset["browser_download_url"]),
         )
 
         # Only set the release URL down here to make sure that we don't invalidate

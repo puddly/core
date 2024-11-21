@@ -239,6 +239,7 @@ class FirmwareUpdateEntity(CoordinatorEntity[FirmwareUpdateCoordinator], UpdateE
         )
         self._attr_latest_version = self.entity_description.version_parser(version)
         self._attr_release_summary = self._latest_firmware.release_notes
+        self._attr_release_url = str(self._latest_manifest.html_url)
 
     @callback
     def _handle_coordinator_update(self) -> None:

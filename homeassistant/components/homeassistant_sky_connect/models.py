@@ -63,17 +63,28 @@ class FirmwareManifest:
     """Manifest for a group of firmwares encompassing a firmware builder release."""
 
     url: URL
+    html_url: URL
     created_at: datetime
     firmwares: tuple[FirmwareMetadata, ...]
 
     @classmethod
-    def from_json(cls, data: dict[str, Any], *, url: URL | None = None) -> Self:
+    def from_json(
+        cls,
+        data: dict[str, Any],
+        *,
+        url: URL | None = None,
+        html_url: URL | None = None,
+    ) -> Self:
         """Construct from JSON data."""
         if url is None:
             url = URL(data["url"])
 
+        if html_url is None:
+            html_url = URL(data["html_url"])
+
         return cls(
             url=url,
+            html_url=html_url,
             created_at=datetime.fromisoformat(data["metadata"]["created_at"]),
             firmwares=tuple(
                 [
@@ -87,6 +98,7 @@ class FirmwareManifest:
         """Return manifest as a dict."""
         return {
             "url": str(self.url),
+            "html_url": str(self.html_url),
             "metadata": {
                 "created_at": self.created_at.isoformat(),
             },
