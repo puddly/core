@@ -5,21 +5,22 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
-from universal_silabs_flasher.const import ApplicationType
-
 from homeassistant.components import usb
 from homeassistant.components.homeassistant_hardware import (
     firmware_config_flow,
     silabs_multiprotocol_addon,
 )
+from homeassistant.components.homeassistant_hardware.util import FirmwareType
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigEntryBaseFlow,
+    ConfigEntryState,
     ConfigFlowContext,
     ConfigFlowResult,
     OptionsFlow,
 )
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOCS_WEB_FLASHER_URL, DOMAIN, HardwareVariant
 from .util import get_hardware_variant, get_usb_service_info
@@ -64,7 +65,7 @@ class HomeAssistantSkyConnectConfigFlow(
     """Handle a config flow for Home Assistant SkyConnect."""
 
     VERSION = 1
-    MINOR_VERSION = 2
+    MINOR_VERSION = 3
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the config flow."""
@@ -79,9 +80,9 @@ class HomeAssistantSkyConnectConfigFlow(
         config_entry: ConfigEntry,
     ) -> OptionsFlow:
         """Return the options flow."""
-        firmware_type = ApplicationType(config_entry.data["firmware"])
+        firmware_type = FirmwareType(config_entry.data["firmware"])
 
-        if firmware_type is ApplicationType.CPC:
+        if firmware_type is FirmwareType.MULTIPROTOCOL:
             return HomeAssistantSkyConnectMultiPanOptionsFlowHandler(config_entry)
 
         return HomeAssistantSkyConnectOptionsFlowHandler(config_entry)
@@ -120,7 +121,7 @@ class HomeAssistantSkyConnectConfigFlow(
         """Create the config entry."""
         assert self._usb_info is not None
         assert self._hw_variant is not None
-        assert self._probed_firmware_type is not None
+        assert self._firmware_info is not None
 
         return self.async_create_entry(
             title=self._hw_variant.full_name,
@@ -132,7 +133,8 @@ class HomeAssistantSkyConnectConfigFlow(
                 "description": self._usb_info.description,  # For backwards compatibility
                 "product": self._usb_info.description,
                 "device": self._usb_info.device,
-                "firmware": self._probed_firmware_type.value,
+                "firmware": self._firmware_info.firmware_type,
+                "firmware_version": self._firmware_info.firmware_version,
             },
         )
 
@@ -184,7 +186,8 @@ class HomeAssistantSkyConnectMultiPanOptionsFlowHandler(
             entry=self.config_entry,
             data={
                 **self.config_entry.data,
-                "firmware": ApplicationType.EZSP.value,
+                "firmware": FirmwareType.ZIGBEE.value,
+                "firmware_version": None,
             },
             options=self.config_entry.options,
         )
@@ -201,25 +204,30 @@ class HomeAssistantSkyConnectOptionsFlowHandler(
         """Instantiate options flow."""
         super().__init__(*args, **kwargs)
 
+        if self.config_entry.state != ConfigEntryState.LOADED:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="device_not_plugged_in"
+            )
+
         self._usb_info = get_usb_service_info(self.config_entry)
         self._hw_variant = HardwareVariant.from_usb_product_name(
             self.config_entry.data["product"]
         )
         self._hardware_name = self._hw_variant.full_name
-        self._device = self._usb_info.device
 
         # Regenerate the translation placeholders
         self._get_translation_placeholders()
 
     def _async_flow_finished(self) -> ConfigFlowResult:
         """Create the config entry."""
-        assert self._probed_firmware_type is not None
+        assert self._firmware_info is not None
 
         self.hass.config_entries.async_update_entry(
             entry=self.config_entry,
             data={
                 **self.config_entry.data,
-                "firmware": self._probed_firmware_type.value,
+                "firmware": self._firmware_info.firmware_type.value,
+                "firmware_version": self._firmware_info.firmware_version,
             },
             options=self.config_entry.options,
         )

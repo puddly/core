@@ -6,10 +6,6 @@ import pytest
 
 from homeassistant.components import zha
 from homeassistant.components.hassio import DOMAIN as HASSIO_DOMAIN
-from homeassistant.components.homeassistant_hardware.util import (
-    ApplicationType,
-    FirmwareGuess,
-)
 from homeassistant.components.homeassistant_yellow.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
@@ -31,12 +27,16 @@ async def test_setup_entry(
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "zigbee",
+            "firmware_version": "7.4.4.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     with (
@@ -47,14 +47,6 @@ async def test_setup_entry(
         patch(
             "homeassistant.components.onboarding.async_is_onboarded",
             return_value=onboarded,
-        ),
-        patch(
-            "homeassistant.components.homeassistant_yellow.guess_firmware_type",
-            return_value=FirmwareGuess(  # Nothing is setup
-                is_running=False,
-                firmware_type=ApplicationType.EZSP,
-                source="unknown",
-            ),
         ),
     ):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -88,12 +80,16 @@ async def test_setup_zha(hass: HomeAssistant, addon_store_info) -> None:
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "zigbee",
+            "firmware_version": "7.4.4.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     with (
@@ -137,12 +133,16 @@ async def test_setup_entry_no_hassio(hass: HomeAssistant) -> None:
     """Test setup of a config entry without hassio."""
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "zigbee",
+            "firmware_version": "7.4.4.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     assert len(hass.config_entries.async_entries()) == 1
@@ -164,12 +164,16 @@ async def test_setup_entry_wrong_board(hass: HomeAssistant) -> None:
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "zigbee",
+            "firmware_version": "7.4.4.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     assert len(hass.config_entries.async_entries()) == 1
@@ -192,12 +196,16 @@ async def test_setup_entry_wait_hassio(hass: HomeAssistant) -> None:
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "zigbee",
+            "firmware_version": "7.4.4.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     with patch(
@@ -220,12 +228,16 @@ async def test_setup_entry_addon_info_fails(
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.CPC},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "multiprotocol",
+            "firmware_version": None,
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     with (

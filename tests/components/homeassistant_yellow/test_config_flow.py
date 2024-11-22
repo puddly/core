@@ -18,7 +18,10 @@ from homeassistant.components.homeassistant_hardware.silabs_multiprotocol_addon 
     get_flasher_addon_manager,
     get_multiprotocol_addon_manager,
 )
-from homeassistant.components.homeassistant_hardware.util import ApplicationType
+from homeassistant.components.homeassistant_hardware.util import (
+    FirmwareInfo,
+    FirmwareType,
+)
 from homeassistant.components.homeassistant_yellow.const import DOMAIN, RADIO_DEVICE
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -75,8 +78,14 @@ async def test_config_flow(hass: HomeAssistant) -> None:
             return_value=True,
         ) as mock_setup_entry,
         patch(
-            "homeassistant.components.homeassistant_hardware.firmware_config_flow.probe_silabs_firmware_type",
-            return_value=ApplicationType.EZSP,
+            "homeassistant.components.homeassistant_hardware.firmware_config_flow.probe_silabs_firmware",
+            return_value=FirmwareInfo(
+                device="/dev/ttyAMA1",
+                firmware_type=FirmwareType.ZIGBEE,
+                firmware_version="6.9.0.0",
+                owners=[],
+                source="probe",
+            ),
         ),
     ):
         result = await hass.config_entries.flow.async_init(
@@ -85,12 +94,18 @@ async def test_config_flow(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Home Assistant Yellow"
-    assert result["data"] == {"firmware": "ezsp"}
+    assert result["data"] == {
+        "firmware": "zigbee",
+        "firmware_version": "6.9.0.0",
+    }
     assert result["options"] == {}
     assert len(mock_setup_entry.mock_calls) == 1
 
     config_entry = hass.config_entries.async_entries(DOMAIN)[0]
-    assert config_entry.data == {"firmware": "ezsp"}
+    assert config_entry.data == {
+        "firmware": "zigbee",
+        "firmware_version": "6.9.0.0",
+    }
     assert config_entry.options == {}
     assert config_entry.title == "Home Assistant Yellow"
 
@@ -102,7 +117,11 @@ async def test_config_flow_single_entry(hass: HomeAssistant) -> None:
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": FirmwareType.ZIGBEE,
+            "firmware_version": "6.9.0.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
@@ -142,7 +161,11 @@ async def test_option_flow_led_settings(
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": FirmwareType.ZIGBEE,
+            "firmware_version": "6.9.0.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
@@ -190,7 +213,11 @@ async def test_option_flow_led_settings_unchanged(
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": FirmwareType.ZIGBEE,
+            "firmware_version": "6.9.0.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
@@ -224,7 +251,11 @@ async def test_option_flow_led_settings_fail_1(hass: HomeAssistant) -> None:
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": FirmwareType.ZIGBEE,
+            "firmware_version": "6.9.0.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
@@ -258,7 +289,11 @@ async def test_option_flow_led_settings_fail_2(
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.EZSP},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": FirmwareType.ZIGBEE,
+            "firmware_version": "6.9.0.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
@@ -295,7 +330,11 @@ async def test_firmware_options_flow(hass: HomeAssistant) -> None:
     await async_setup_component(hass, HASSIO_DOMAIN, {})
 
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.SPINEL},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": FirmwareType.THREAD,
+            "firmware_version": None,
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
@@ -317,27 +356,45 @@ async def test_firmware_options_flow(hass: HomeAssistant) -> None:
     )
 
     assert result["step_id"] == "pick_firmware"
-    assert result["description_placeholders"]["firmware_type"] == "spinel"
+    assert result["description_placeholders"]["firmware_type"] == "thread"
     assert result["description_placeholders"]["model"] == "Home Assistant Yellow"
 
-    async def mock_async_step_pick_firmware_zigbee(self, data):
-        return await self.async_step_confirm_zigbee(user_input={})
-
-    with patch(
-        "homeassistant.components.homeassistant_hardware.firmware_config_flow.BaseFirmwareOptionsFlow.async_step_pick_firmware_zigbee",
-        autospec=True,
-        side_effect=mock_async_step_pick_firmware_zigbee,
+    with (
+        patch(
+            "homeassistant.components.homeassistant_hardware.firmware_config_flow.guess_hardware_owners",
+            return_value=[],
+        ),
+        patch(
+            "homeassistant.components.homeassistant_hardware.firmware_config_flow.probe_silabs_firmware",
+            return_value=FirmwareInfo(
+                device="/dev/ttyAMA1",
+                firmware_type=FirmwareType.ZIGBEE,
+                firmware_version="6.9.0.0",
+                owners=[],
+                source="probe",
+            ),
+        ),
     ):
-        result = await hass.config_entries.options.async_configure(
+        result_confirm = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={"next_step_id": STEP_PICK_FIRMWARE_ZIGBEE},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"] is True
+    assert result_confirm["step_id"] == "confirm_zigbee"
+    assert result_confirm["type"] is FlowResultType.FORM
+
+    result_create_entry = await hass.config_entries.options.async_configure(
+        result_confirm["flow_id"],
+        user_input={},
+    )
+
+    assert result_create_entry["type"] is FlowResultType.CREATE_ENTRY
+    assert result_create_entry["result"] is True
 
     assert config_entry.data == {
-        "firmware": "ezsp",
+        "device": "/dev/ttyAMA1",
+        "firmware": FirmwareType.ZIGBEE,
+        "firmware_version": "6.9.0.0",
     }
 
 
@@ -348,7 +405,11 @@ async def test_options_flow_multipan_uninstall(hass: HomeAssistant) -> None:
     await async_setup_component(hass, HASSIO_DOMAIN, {})
 
     config_entry = MockConfigEntry(
-        data={"firmware": ApplicationType.CPC},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": FirmwareType.MULTIPROTOCOL,
+            "firmware_version": None,
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
@@ -423,4 +484,4 @@ async def test_options_flow_multipan_uninstall(hass: HomeAssistant) -> None:
         assert result["type"] is FlowResultType.CREATE_ENTRY
 
     # We've reverted the firmware back to Zigbee
-    assert config_entry.data["firmware"] == "ezsp"
+    assert config_entry.data["firmware"] == FirmwareType.ZIGBEE

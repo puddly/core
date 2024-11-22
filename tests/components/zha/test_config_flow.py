@@ -1654,9 +1654,13 @@ async def test_options_flow_defaults(
     assert "/dev/ttyUSB0" in result2["data_schema"]({})[CONF_DEVICE_PATH]
 
     # Autoprobing fails, we have to manually choose the radio type
-    result3 = await hass.config_entries.options.async_configure(
-        flow["flow_id"], user_input={}
-    )
+    with patch(
+        "homeassistant.components.zha.repairs.wrong_silabs_firmware.warn_on_wrong_silabs_firmware",
+        return_value=False,
+    ):
+        result3 = await hass.config_entries.options.async_configure(
+            flow["flow_id"], user_input={}
+        )
 
     # Current radio type is the default
     assert result3["step_id"] == "manual_pick_radio_type"

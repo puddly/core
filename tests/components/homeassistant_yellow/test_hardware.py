@@ -23,10 +23,15 @@ async def test_hardware_info(
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "zigbee",
+            "firmware_version": "7.4.4.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     with patch(
@@ -76,10 +81,15 @@ async def test_hardware_info_fail(
 
     # Setup the config entry
     config_entry = MockConfigEntry(
-        data={},
+        data={
+            "device": "/dev/ttyAMA1",
+            "firmware": "zigbee",
+            "firmware_version": "7.4.4.0",
+        },
         domain=DOMAIN,
         options={},
         title="Home Assistant Yellow",
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
     with patch(

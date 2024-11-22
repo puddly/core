@@ -14,6 +14,10 @@ from homeassistant.components.homeassistant_hardware.silabs_multiprotocol_addon 
     get_flasher_addon_manager,
     get_multiprotocol_addon_manager,
 )
+from homeassistant.components.homeassistant_hardware.util import (
+    FirmwareInfo,
+    FirmwareType,
+)
 from homeassistant.components.homeassistant_sky_connect.const import DOMAIN
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -58,24 +62,41 @@ async def test_config_flow(
     assert result["step_id"] == "pick_firmware"
     assert result["description_placeholders"]["model"] == model
 
-    async def mock_async_step_pick_firmware_zigbee(self, data):
-        return await self.async_step_confirm_zigbee(user_input={})
-
-    with patch(
-        "homeassistant.components.homeassistant_hardware.firmware_config_flow.BaseFirmwareConfigFlow.async_step_pick_firmware_zigbee",
-        autospec=True,
-        side_effect=mock_async_step_pick_firmware_zigbee,
+    with (
+        patch(
+            "homeassistant.components.homeassistant_hardware.firmware_config_flow.guess_hardware_owners",
+            return_value=[],
+        ),
+        patch(
+            "homeassistant.components.homeassistant_hardware.firmware_config_flow.probe_silabs_firmware",
+            return_value=FirmwareInfo(
+                device=usb_data.device,
+                firmware_type=FirmwareType.ZIGBEE,
+                firmware_version="7.1.0.0",
+                owners=[],
+                source="probe",
+            ),
+        ),
     ):
-        result = await hass.config_entries.flow.async_configure(
+        result_confirm = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             user_input={"next_step_id": STEP_PICK_FIRMWARE_ZIGBEE},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result_confirm["step_id"] == "confirm_zigbee"
+    assert result_confirm["type"] is FlowResultType.FORM
 
-    config_entry = result["result"]
+    result_create_entry = await hass.config_entries.flow.async_configure(
+        result_confirm["flow_id"],
+        user_input={},
+    )
+
+    assert result_create_entry["type"] is FlowResultType.CREATE_ENTRY
+
+    config_entry = result_create_entry["result"]
     assert config_entry.data == {
-        "firmware": "ezsp",
+        "firmware": "zigbee",
+        "firmware_version": "7.1.0.0",
         "device": usb_data.device,
         "manufacturer": usb_data.manufacturer,
         "pid": usb_data.pid,
@@ -108,7 +129,8 @@ async def test_options_flow(
     config_entry = MockConfigEntry(
         domain="homeassistant_sky_connect",
         data={
-            "firmware": "spinel",
+            "firmware": "thread",
+            "firmware_version": None,
             "device": usb_data.device,
             "manufacturer": usb_data.manufacturer,
             "pid": usb_data.pid,
@@ -118,7 +140,7 @@ async def test_options_flow(
             "vid": usb_data.vid,
         },
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
 
@@ -128,27 +150,44 @@ async def test_options_flow(
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     assert result["type"] is FlowResultType.MENU
     assert result["step_id"] == "pick_firmware"
-    assert result["description_placeholders"]["firmware_type"] == "spinel"
+    assert result["description_placeholders"]["firmware_type"] == "thread"
     assert result["description_placeholders"]["model"] == model
 
-    async def mock_async_step_pick_firmware_zigbee(self, data):
-        return await self.async_step_confirm_zigbee(user_input={})
-
-    with patch(
-        "homeassistant.components.homeassistant_hardware.firmware_config_flow.BaseFirmwareOptionsFlow.async_step_pick_firmware_zigbee",
-        autospec=True,
-        side_effect=mock_async_step_pick_firmware_zigbee,
+    with (
+        patch(
+            "homeassistant.components.homeassistant_hardware.firmware_config_flow.guess_hardware_owners",
+            return_value=[],
+        ),
+        patch(
+            "homeassistant.components.homeassistant_hardware.firmware_config_flow.probe_silabs_firmware",
+            return_value=FirmwareInfo(
+                device=usb_data.device,
+                firmware_type=FirmwareType.ZIGBEE,
+                firmware_version="7.4.4.0",
+                owners=[],
+                source="probe",
+            ),
+        ),
     ):
-        result = await hass.config_entries.options.async_configure(
+        result_confirm = await hass.config_entries.options.async_configure(
             result["flow_id"],
             user_input={"next_step_id": STEP_PICK_FIRMWARE_ZIGBEE},
         )
 
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["result"] is True
+    assert result_confirm["step_id"] == "confirm_zigbee"
+    assert result_confirm["type"] is FlowResultType.FORM
+
+    result_create_entry = await hass.config_entries.options.async_configure(
+        result_confirm["flow_id"],
+        user_input={},
+    )
+
+    assert result_create_entry["type"] is FlowResultType.CREATE_ENTRY
+    assert result_create_entry["result"] is True
 
     assert config_entry.data == {
-        "firmware": "ezsp",
+        "firmware": "zigbee",
+        "firmware_version": "7.4.4.0",
         "device": usb_data.device,
         "manufacturer": usb_data.manufacturer,
         "pid": usb_data.pid,
@@ -174,7 +213,8 @@ async def test_options_flow_multipan_uninstall(
     config_entry = MockConfigEntry(
         domain="homeassistant_sky_connect",
         data={
-            "firmware": "cpc",
+            "firmware": "multiprotocol",
+            "firmware_version": None,
             "device": usb_data.device,
             "manufacturer": usb_data.manufacturer,
             "pid": usb_data.pid,
@@ -183,7 +223,7 @@ async def test_options_flow_multipan_uninstall(
             "vid": usb_data.vid,
         },
         version=1,
-        minor_version=2,
+        minor_version=3,
     )
     config_entry.add_to_hass(hass)
 
@@ -249,4 +289,4 @@ async def test_options_flow_multipan_uninstall(
         assert result["type"] is FlowResultType.CREATE_ENTRY
 
     # We've reverted the firmware back to Zigbee
-    assert config_entry.data["firmware"] == "ezsp"
+    assert config_entry.data["firmware"] == "zigbee"

@@ -7,16 +7,11 @@ import asyncio
 import logging
 from typing import Any
 
-from universal_silabs_flasher.const import ApplicationType
-
 from homeassistant.components.hassio import (
     AddonError,
     AddonInfo,
     AddonManager,
     AddonState,
-)
-from homeassistant.components.zha.repairs.wrong_silabs_firmware import (
-    probe_silabs_firmware_type,
 )
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -30,11 +25,15 @@ from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers.hassio import is_hassio
 
 from . import silabs_multiprotocol_addon
-from .const import ZHA_DOMAIN
+from .const import OTBR_DOMAIN, ZHA_DOMAIN
 from .util import (
+    FirmwareInfo,
+    FirmwareProbingFailed,
+    FirmwareType,
     get_otbr_addon_manager,
-    get_zha_device_path,
     get_zigbee_flasher_addon_manager,
+    guess_hardware_owners,
+    probe_silabs_firmware,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,7 +52,7 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Instantiate base flow."""
         super().__init__(*args, **kwargs)
 
-        self._probed_firmware_type: ApplicationType | None = None
+        self._firmware_info: FirmwareInfo | None = None
         self._device: str | None = None  # To be set in a subclass
         self._hardware_name: str = "unknown"  # To be set in a subclass
 
@@ -65,8 +64,8 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Shared translation placeholders."""
         placeholders = {
             "firmware_type": (
-                self._probed_firmware_type.value
-                if self._probed_firmware_type is not None
+                self._firmware_info.firmware_type.value
+                if self._firmware_info is not None
                 else "unknown"
             ),
             "model": self._hardware_name,
@@ -121,40 +120,60 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
             description_placeholders=self._get_translation_placeholders(),
         )
 
-    async def _probe_firmware_type(self) -> bool:
+    async def _probe_firmware(
+        self, *, expected_type: FirmwareType | None = None
+    ) -> ConfigFlowResult | None:
         """Probe the firmware currently on the device."""
         assert self._device is not None
 
-        self._probed_firmware_type = await probe_silabs_firmware_type(
-            self._device,
-            probe_methods=(
-                # We probe in order of frequency: Zigbee, Thread, then multi-PAN
-                ApplicationType.GECKO_BOOTLOADER,
-                ApplicationType.EZSP,
-                ApplicationType.SPINEL,
-                ApplicationType.CPC,
-            ),
-        )
+        try:
+            self._firmware_info = await probe_silabs_firmware(
+                self._device,
+                probe_methods=(
+                    # We probe in order of frequency
+                    FirmwareType.BOOTLOADER,
+                    FirmwareType.ZIGBEE,
+                    FirmwareType.THREAD,
+                    FirmwareType.MULTIPROTOCOL,
+                ),
+            )
+        except (TimeoutError, FirmwareProbingFailed):
+            _LOGGER.debug("Firmware probing failed", exc_info=True)
+            self._firmware_info = None
 
-        return self._probed_firmware_type in (
-            ApplicationType.EZSP,
-            ApplicationType.SPINEL,
-            ApplicationType.CPC,
-        )
+            return self.async_abort(
+                reason="unsupported_firmware",  # Ideally should be called `could_not_determine_firmware`
+                description_placeholders=self._get_translation_placeholders(),
+            )
+
+        if (
+            expected_type is not None
+            and self._firmware_info.firmware_type != expected_type
+        ):
+            return self.async_abort(
+                reason="unexpected_firmware",
+                description_placeholders={
+                    **self._get_translation_placeholders(),
+                    "expected": expected_type.value,
+                    "got": self._firmware_info.firmware_type.value,
+                },
+            )
+
+        return None
 
     async def async_step_pick_firmware_zigbee(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Pick Zigbee firmware."""
-        if not await self._probe_firmware_type():
-            return self.async_abort(
-                reason="unsupported_firmware",
-                description_placeholders=self._get_translation_placeholders(),
-            )
+        if probe_failure := await self._probe_firmware():
+            return probe_failure
 
         # Allow the stick to be used with ZHA without flashing
-        if self._probed_firmware_type == ApplicationType.EZSP:
-            return await self.async_step_confirm_zigbee()
+        if (
+            self._firmware_info is not None
+            and self._firmware_info.firmware_type == FirmwareType.ZIGBEE
+        ):
+            return await self.async_step_verify_zigbee_firmware()
 
         if not is_hassio(self.hass):
             return self.async_abort(
@@ -331,7 +350,18 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         finally:
             self.addon_uninstall_task = None
 
-        return self.async_show_progress_done(next_step_id="confirm_zigbee")
+        return self.async_show_progress_done(next_step_id="verify_zigbee_firmware")
+
+    async def async_step_verify_zigbee_firmware(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Probe the Zigbee firmware on the device, after flashing."""
+        if probe_failure := await self._probe_firmware(
+            expected_type=FirmwareType.ZIGBEE
+        ):
+            return probe_failure
+
+        return await self.async_step_confirm_zigbee()
 
     async def async_step_confirm_zigbee(
         self, user_input: dict[str, Any] | None = None
@@ -339,7 +369,6 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Confirm Zigbee setup."""
         assert self._device is not None
         assert self._hardware_name is not None
-        self._probed_firmware_type = ApplicationType.EZSP
 
         if user_input is not None:
             await self.hass.config_entries.flow.async_init(
@@ -367,11 +396,8 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Pick Thread firmware."""
-        if not await self._probe_firmware_type():
-            return self.async_abort(
-                reason="unsupported_firmware",
-                description_placeholders=self._get_translation_placeholders(),
-            )
+        if probe_failure := await self._probe_firmware():
+            return probe_failure
 
         # We install the OTBR addon no matter what, since it is required to use Thread
         if not is_hassio(self.hass):
@@ -459,7 +485,15 @@ class BaseFirmwareInstallFlow(ConfigEntryBaseFlow, ABC):
         """Confirm OTBR setup."""
         assert self._device is not None
 
-        self._probed_firmware_type = ApplicationType.SPINEL
+        # The OTBR addon at this point is communicating with the device so we have to
+        # guess the firmware info
+        self._firmware_info = FirmwareInfo(
+            device=self._device,
+            firmware_type=FirmwareType.THREAD,
+            firmware_version=None,
+            source="guess",
+            owners=[],
+        )
 
         if user_input is not None:
             # OTBR discovery is done automatically via hassio
@@ -502,14 +536,22 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
         """Instantiate options flow."""
         super().__init__(*args, **kwargs)
 
-        self._config_entry = config_entry
+        self._device = config_entry.data["device"]
+        assert self._device is not None
 
-        self._probed_firmware_type = ApplicationType(self.config_entry.data["firmware"])
+        self._config_entry = config_entry
+        self._firmware_info = FirmwareInfo(
+            device=self._device,
+            firmware_type=FirmwareType(config_entry.data["firmware"]),
+            firmware_version=config_entry.data["firmware_version"],
+            source="unknown",
+            owners=[],
+        )
 
         # Make `context` a regular dictionary
         self.context = {}
 
-        # Subclasses are expected to override `_device` and `_hardware_name`
+        # Subclasses are expected to override `_hardware_name`
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -522,15 +564,10 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
     ) -> ConfigFlowResult:
         """Pick Zigbee firmware."""
         assert self._device is not None
+        owners = await guess_hardware_owners(self.hass, self._device)
 
-        if is_hassio(self.hass):
-            otbr_manager = get_otbr_addon_manager(self.hass)
-            otbr_addon_info = await self._async_get_addon_info(otbr_manager)
-
-            if (
-                otbr_addon_info.state != AddonState.NOT_INSTALLED
-                and otbr_addon_info.options.get("device") == self._device
-            ):
+        for info in owners:
+            if info.source == OTBR_DOMAIN:
                 raise AbortFlow(
                     "otbr_still_using_stick",
                     description_placeholders=self._get_translation_placeholders(),
@@ -544,12 +581,10 @@ class BaseFirmwareOptionsFlow(BaseFirmwareInstallFlow, OptionsFlow):
         """Pick Thread firmware."""
         assert self._device is not None
 
-        for zha_entry in self.hass.config_entries.async_entries(
-            ZHA_DOMAIN,
-            include_ignore=False,
-            include_disabled=True,
-        ):
-            if get_zha_device_path(zha_entry) == self._device:
+        owners = await guess_hardware_owners(self.hass, self._device)
+
+        for info in owners:
+            if info.source == ZHA_DOMAIN:
                 raise AbortFlow(
                     "zha_still_using_stick",
                     description_placeholders=self._get_translation_placeholders(),

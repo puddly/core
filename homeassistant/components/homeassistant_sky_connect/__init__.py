@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.components.homeassistant_hardware.util import guess_firmware_type
+from homeassistant.components.homeassistant_hardware.util import guess_firmware_info
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
@@ -33,12 +33,14 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             # Add-on startup with type service get started before Core, always (e.g. the
             # Multi-Protocol add-on). Probing the firmware would interfere with the add-on,
             # so we can't safely probe here. Instead, we must make an educated guess!
-            firmware_guess = await guess_firmware_type(
+            firmware_guess = await guess_firmware_info(
                 hass, config_entry.data["device"]
             )
 
             new_data = {**config_entry.data}
-            new_data["firmware"] = firmware_guess.firmware_type.value
+            new_data["firmware"] = (
+                firmware_guess.firmware_type.as_application_type().value
+            )
 
             # Copy `description` to `product`
             new_data["product"] = new_data["description"]
@@ -48,6 +50,20 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
                 data=new_data,
                 version=1,
                 minor_version=2,
+            )
+
+        if config_entry.minor_version == 2:
+            firmware_info = await guess_firmware_info(hass, config_entry.data["device"])
+
+            new_data = {**config_entry.data}
+            new_data["firmware"] = firmware_info.firmware_type
+            new_data["firmware_version"] = firmware_info.firmware_version
+
+            hass.config_entries.async_update_entry(
+                config_entry,
+                data=new_data,
+                version=1,
+                minor_version=3,
             )
 
         _LOGGER.debug(

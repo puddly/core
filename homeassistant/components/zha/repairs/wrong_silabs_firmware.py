@@ -5,9 +5,11 @@ from __future__ import annotations
 import enum
 import logging
 
-from universal_silabs_flasher.const import ApplicationType
-from universal_silabs_flasher.flasher import Flasher
-
+from homeassistant.components.homeassistant_hardware.util import (
+    FirmwareProbingFailed,
+    FirmwareType,
+    probe_silabs_firmware,
+)
 from homeassistant.components.homeassistant_sky_connect import (
     hardware as skyconnect_hardware,
 )
@@ -74,36 +76,20 @@ def _detect_radio_hardware(hass: HomeAssistant, device: str) -> HardwareType:
     return HardwareType.OTHER
 
 
-async def probe_silabs_firmware_type(
-    device: str, *, probe_methods: ApplicationType | None = None
-) -> ApplicationType | None:
-    """Probe the running firmware on a Silabs device."""
-    flasher = Flasher(
-        device=device,
-        **({"probe_methods": probe_methods} if probe_methods else {}),
-    )
-
-    try:
-        await flasher.probe_app_type()
-    except Exception:  # noqa: BLE001
-        _LOGGER.debug("Failed to probe application type", exc_info=True)
-
-    return flasher.app_type
-
-
 async def warn_on_wrong_silabs_firmware(hass: HomeAssistant, device: str) -> bool:
     """Create a repair issue if the wrong type of SiLabs firmware is detected."""
     # Only consider actual serial ports
     if device.startswith("socket://"):
         return False
 
-    app_type = await probe_silabs_firmware_type(device)
-
-    if app_type is None:
+    try:
+        firmware_info = await probe_silabs_firmware(device)
+    except FirmwareProbingFailed:
         # Failed to probe, we can't tell if the wrong firmware is installed
+        _LOGGER.debug("Failed to probe running firmware", exc_info=True)
         return False
 
-    if app_type == ApplicationType.EZSP:
+    if firmware_info.firmware_type == FirmwareType.ZIGBEE:
         # If connecting fails but we somehow probe EZSP (e.g. stuck in bootloader),
         # reconnect, it should work
         raise AlreadyRunningEZSP
@@ -121,7 +107,7 @@ async def warn_on_wrong_silabs_firmware(hass: HomeAssistant, device: str) -> boo
             ISSUE_WRONG_SILABS_FIRMWARE_INSTALLED
             + ("_nabucasa" if hardware_type != HardwareType.OTHER else "_other")
         ),
-        translation_placeholders={"firmware_type": app_type.name},
+        translation_placeholders={"firmware_type": firmware_info.firmware_type.name},
     )
 
     return True
