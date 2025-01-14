@@ -63,7 +63,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> bool
         TimeoutError,
     ) as err:
         raise ConfigEntryNotReady("Unable to connect") from err
+
+    try:
+        coprocessor_version = await otbrdata.get_coprocessor_version()
+    except HomeAssistantError:
+        coprocessor_version = None
+
+    hass.config_entries.async_update_entry(
+        entry,
+        data={
+            **entry.data,
+            CONF_FIRMWARE_VERSION: coprocessor_version,
+        },
+    )
+
     await update_unique_id(hass, entry, border_agent_id)
+
     if dataset_tlvs:
         await update_issues(hass, otbrdata, dataset_tlvs)
         await async_add_dataset(
