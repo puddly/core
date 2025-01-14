@@ -71,12 +71,23 @@ def get_extended_address_fixture() -> Generator[AsyncMock]:
         yield get_extended_address
 
 
+@pytest.fixture(name="get_coprocessor_version")
+def get_coprocessor_version_fixture() -> Generator[AsyncMock]:
+    """Mock get_coprocessor_version."""
+    with patch(
+        "python_otbr_api.OTBR.get_coprocessor_version",
+        return_value="SL-OPENTHREAD/2.4.4.0_GitHub-7074a43e4; EFR32; Oct 21 2024 14:40:57",
+    ) as get_coprocessor_version:
+        yield get_coprocessor_version
+
+
 @pytest.fixture(name="otbr_config_entry_multipan")
 async def otbr_config_entry_multipan_fixture(
     hass: HomeAssistant,
     get_active_dataset_tlvs: AsyncMock,
     get_border_agent_id: AsyncMock,
     get_extended_address: AsyncMock,
+    get_coprocessor_version: AsyncMock,
 ) -> str:
     """Mock Open Thread Border Router config entry."""
     config_entry = MockConfigEntry(
@@ -85,6 +96,13 @@ async def otbr_config_entry_multipan_fixture(
         options={},
         title="Open Thread Border Router",
         unique_id=TEST_BORDER_AGENT_EXTENDED_ADDRESS.hex(),
+        version=1,
+        minor_version=2,
+    )
+    config_entry.runtime_data = otbr.OTBRData(
+        url="http://core-openthread-border-router:8081/",
+        api=AsyncMock(),
+        entry_id=config_entry.entry_id,
     )
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -97,6 +115,7 @@ async def otbr_config_entry_thread_fixture(
     get_active_dataset_tlvs: AsyncMock,
     get_border_agent_id: AsyncMock,
     get_extended_address: AsyncMock,
+    get_coprocessor_version: AsyncMock,
 ) -> None:
     """Mock Open Thread Border Router config entry."""
     config_entry = MockConfigEntry(
@@ -105,6 +124,13 @@ async def otbr_config_entry_thread_fixture(
         options={},
         title="Open Thread Border Router",
         unique_id=TEST_BORDER_AGENT_EXTENDED_ADDRESS.hex(),
+        version=1,
+        minor_version=2,
+    )
+    config_entry.runtime_data = otbr.OTBRData(
+        url="http://core-openthread-border-router:8081/",
+        api=AsyncMock(),
+        entry_id=config_entry.entry_id,
     )
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)

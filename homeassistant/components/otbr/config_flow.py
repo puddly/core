@@ -195,8 +195,9 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
         url = f"http://{config['host']}:{config['port']}"
         config_entry_data = {
             CONF_URL: url,
-            CONF_DEVICE: config["device"],
-            CONF_FIRMWARE_VERSION: config["firmware"],
+            # Not all addons send `device` and `firmware`
+            CONF_DEVICE: config.get("device", None),
+            CONF_FIRMWARE_VERSION: config.get("firmware", None),
         }
 
         if current_entries := self._async_current_entries():

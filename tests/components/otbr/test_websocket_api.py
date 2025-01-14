@@ -15,6 +15,7 @@ from . import (
     DATASET_CH16,
     TEST_BORDER_AGENT_EXTENDED_ADDRESS,
     TEST_BORDER_AGENT_ID,
+    TEST_COPROCESSOR_VERSION,
 )
 
 from tests.test_util.aiohttp import AiohttpClientMocker
@@ -61,6 +62,10 @@ async def test_get_info(
             "python_otbr_api.OTBR.get_extended_address",
             return_value=TEST_BORDER_AGENT_EXTENDED_ADDRESS,
         ),
+        patch(
+            "python_otbr_api.OTBR.get_coprocessor_version",
+            return_value=TEST_COPROCESSOR_VERSION,
+        ),
     ):
         await websocket_client.send_json_auto_id({"type": "otbr/info"})
         msg = await websocket_client.receive_json()
@@ -75,6 +80,7 @@ async def test_get_info(
             "border_agent_id": TEST_BORDER_AGENT_ID.hex(),
             "extended_address": extended_address,
             "extended_pan_id": extended_pan_id.lower(),
+            "coprocessor_version": TEST_COPROCESSOR_VERSION,
         }
     }
 

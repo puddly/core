@@ -69,13 +69,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> bool
     except HomeAssistantError:
         coprocessor_version = None
 
-    hass.config_entries.async_update_entry(
-        entry,
-        data={
-            **entry.data,
-            CONF_FIRMWARE_VERSION: coprocessor_version,
-        },
-    )
+    if coprocessor_version is not None:
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_FIRMWARE_VERSION: coprocessor_version,
+            },
+        )
 
     await update_unique_id(hass, entry, border_agent_id)
 

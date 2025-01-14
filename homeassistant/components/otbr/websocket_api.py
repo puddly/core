@@ -70,6 +70,11 @@ async def websocket_info(
             connection.send_error(msg["id"], "otbr_info_failed", str(exc))
             return
 
+        try:
+            coprocessor_version = await data.get_coprocessor_version()
+        except HomeAssistantError:
+            coprocessor_version = None
+
         # The border agent ID is checked when the OTBR config entry is setup,
         # we can assert it's not None
         assert border_agent_id is not None
@@ -86,6 +91,7 @@ async def websocket_info(
             "extended_address": extended_address,
             "extended_pan_id": extended_pan_id,
             "url": data.url,
+            "coprocessor_version": coprocessor_version,
         }
 
     connection.send_result(msg["id"], response)

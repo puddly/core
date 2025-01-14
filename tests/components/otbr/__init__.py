@@ -1,8 +1,16 @@
 """Tests for the Open Thread Border Router integration."""
 
 BASE_URL = "http://core-silabs-multiprotocol:8081"
-CONFIG_ENTRY_DATA_MULTIPAN = {"url": "http://core-silabs-multiprotocol:8081"}
-CONFIG_ENTRY_DATA_THREAD = {"url": "/dev/ttyAMA1"}
+CONFIG_ENTRY_DATA_MULTIPAN = {
+    "url": "http://core-silabs-multiprotocol:8081",
+    "device": None,
+    "firmware_version": None,
+}
+CONFIG_ENTRY_DATA_THREAD = {
+    "url": "http://core-openthread-border-router:8081",
+    "device": "/dev/ttyAMA1",
+    "firmware_version": "SL-OPENTHREAD/2.4.4.0_GitHub-7074a43e4; EFR32; Oct 21 2024 14:40:57",
+}
 
 DATASET_CH15 = bytes.fromhex(
     "0E080000000000010000000300000F35060004001FFFE00208F642646DA209B1D00708FDF57B5A"
@@ -60,3 +68,8 @@ ROUTER_DISCOVERY_HASS = {
     },
     "interface_index": None,
 }
+
+
+TEST_COPROCESSOR_VERSION = (
+    "SL-OPENTHREAD/2.4.4.0_GitHub-7074a43e4; EFR32; Oct 21 2024 14:40:57"
+)
