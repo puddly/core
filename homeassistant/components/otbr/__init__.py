@@ -16,7 +16,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 
 from . import websocket_api
-from .const import DOMAIN
+from .const import CONF_DEVICE, CONF_FIRMWARE_VERSION, DOMAIN
 from .util import (
     GetBorderAgentIdNotSupported,
     OTBRData,
@@ -88,3 +88,22 @@ async def async_unload_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> boo
 async def async_reload_entry(hass: HomeAssistant, entry: OTBRConfigEntry) -> None:
     """Handle an options update."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old entry."""
+    _LOGGER.debug("Migrating from version %s.%s", entry.version, entry.minor_version)
+
+    if entry.version == 1 and entry.minor_version == 1:
+        data = {
+            **entry.data,
+            CONF_DEVICE: None,
+            CONF_FIRMWARE_VERSION: None,
+        }
+
+        hass.config_entries.async_update_entry(entry, data=data, minor_version=2)
+
+    _LOGGER.info(
+        "Migration to version %s.%s successful", entry.version, entry.minor_version
+    )
+    return True

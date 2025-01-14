@@ -23,7 +23,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
 
-from .const import DEFAULT_CHANNEL, DOMAIN
+from .const import CONF_DEVICE, CONF_FIRMWARE_VERSION, DEFAULT_CHANNEL, DOMAIN
 from .util import (
     compose_default_network_name,
     generate_random_pan_id,
@@ -80,6 +80,7 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Open Thread Border Router."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     async def _set_dataset(self, api: python_otbr_api.OTBR, otbr_url: str) -> None:
         """Connect to the OTBR and create or apply a dataset if it doesn't have one."""
@@ -174,7 +175,11 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(border_agent_id.hex())
                 return self.async_create_entry(
                     title="Open Thread Border Router",
-                    data={CONF_URL: url},
+                    data={
+                        CONF_URL: url,
+                        CONF_DEVICE: None,
+                        CONF_FIRMWARE_VERSION: None,
+                    },
                 )
 
         data_schema = vol.Schema({CONF_URL: str})
@@ -188,7 +193,11 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle hassio discovery."""
         config = discovery_info.config
         url = f"http://{config['host']}:{config['port']}"
-        config_entry_data = {"url": url}
+        config_entry_data = {
+            CONF_URL: url,
+            CONF_DEVICE: config["device"],
+            CONF_FIRMWARE_VERSION: config["firmware"],
+        }
 
         if current_entries := self._async_current_entries():
             for current_entry in current_entries:
@@ -204,10 +213,10 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
                 if (
                     unique_id != discovery_info.uuid
                     or current_url.host != config["host"]
-                    or current_url.port == config["port"]
+                    or current_entry.data == config_entry_data
                 ):
                     continue
-                # Update URL with the new port
+                # Update config entry with new data
                 self.hass.config_entries.async_update_entry(
                     current_entry,
                     data=config_entry_data,
