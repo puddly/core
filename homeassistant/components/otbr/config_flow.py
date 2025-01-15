@@ -16,6 +16,7 @@ import yarl
 from homeassistant.components.hassio import AddonError, AddonManager
 from homeassistant.components.homeassistant_yellow import hardware as yellow_hardware
 from homeassistant.components.thread import async_get_preferred_dataset
+from homeassistant.components.usb import get_serial_by_id
 from homeassistant.config_entries import SOURCE_HASSIO, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant, callback
@@ -192,11 +193,16 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle hassio discovery."""
         config = discovery_info.config
+
+        if (device := config.get("device", None)) is not None:
+            # Use the unique device symlink
+            device = await self.hass.async_add_executor_job(get_serial_by_id, device)
+
         url = f"http://{config['host']}:{config['port']}"
         config_entry_data = {
             CONF_URL: url,
             # Not all addons send `device` and `firmware`
-            CONF_DEVICE: config.get("device", None),
+            CONF_DEVICE: device,
             CONF_FIRMWARE_VERSION: config.get("firmware", None),
         }
 
