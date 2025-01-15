@@ -357,3 +357,70 @@ async def test_update_unique_id(
     assert await async_setup_component(hass, otbr.DOMAIN, {})
     config_entry = hass.config_entries.async_get_entry(config_entry.entry_id)
     assert config_entry.unique_id == updated_unique_id
+
+
+async def test_config_entry_update_firmware_version(
+    hass: HomeAssistant,
+    multiprotocol_addon_manager_mock,
+) -> None:
+    """Test update config entry firmware version."""
+    multiprotocol_addon_manager_mock.async_get_channel.return_value = 15
+
+    config_entry = MockConfigEntry(
+        data=CONFIG_ENTRY_DATA_MULTIPAN,
+        domain=otbr.DOMAIN,
+        options={},
+        title="My OTBR",
+        unique_id=TEST_BORDER_AGENT_EXTENDED_ADDRESS.hex(),
+    )
+    config_entry.add_to_hass(hass)
+
+    assert config_entry.data[otbr.CONF_FIRMWARE_VERSION] is None
+
+    mock_api = MagicMock()
+    mock_api.get_active_dataset_tlvs = AsyncMock(return_value=None)
+    mock_api.get_border_agent_id = AsyncMock(return_value=TEST_BORDER_AGENT_ID)
+    mock_api.get_extended_address = AsyncMock(
+        return_value=TEST_BORDER_AGENT_EXTENDED_ADDRESS
+    )
+    mock_api.get_coprocessor_version = AsyncMock(return_value=TEST_COPROCESSOR_VERSION)
+    with patch("python_otbr_api.OTBR", return_value=mock_api):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+
+    assert config_entry.data[otbr.CONF_FIRMWARE_VERSION] == TEST_COPROCESSOR_VERSION
+
+
+async def test_config_entry_missing_firmware_version(
+    hass: HomeAssistant,
+    multiprotocol_addon_manager_mock,
+) -> None:
+    """Test update config entry still loads with a missing firmware version."""
+    multiprotocol_addon_manager_mock.async_get_channel.return_value = 15
+
+    config_entry = MockConfigEntry(
+        data={
+            **CONFIG_ENTRY_DATA_MULTIPAN,
+            # This isn't possible but assume somehow multi-PAN has a firmware version
+            "firmware_version": TEST_COPROCESSOR_VERSION,
+        },
+        domain=otbr.DOMAIN,
+        options={},
+        title="My OTBR",
+        unique_id=TEST_BORDER_AGENT_EXTENDED_ADDRESS.hex(),
+    )
+    config_entry.add_to_hass(hass)
+
+    assert config_entry.data[otbr.CONF_FIRMWARE_VERSION] == TEST_COPROCESSOR_VERSION
+
+    mock_api = MagicMock()
+    mock_api.get_active_dataset_tlvs = AsyncMock(return_value=None)
+    mock_api.get_border_agent_id = AsyncMock(return_value=TEST_BORDER_AGENT_ID)
+    mock_api.get_extended_address = AsyncMock(
+        return_value=TEST_BORDER_AGENT_EXTENDED_ADDRESS
+    )
+    mock_api.get_coprocessor_version = AsyncMock(side_effect=python_otbr_api.OTBRError)
+    with patch("python_otbr_api.OTBR", return_value=mock_api):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+
+    # It will be cleared
+    assert config_entry.data[otbr.CONF_FIRMWARE_VERSION] is None

@@ -85,6 +85,54 @@ async def test_get_info(
     }
 
 
+async def test_get_info_coprocessor_version_not_implemented(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    otbr_config_entry_multipan,
+    websocket_client,
+) -> None:
+    """Test async_get_info."""
+    with (
+        patch(
+            "python_otbr_api.OTBR.get_active_dataset",
+            return_value=python_otbr_api.ActiveDataSet(
+                channel=16, extended_pan_id="ABCD1234"
+            ),
+        ),
+        patch(
+            "python_otbr_api.OTBR.get_active_dataset_tlvs", return_value=DATASET_CH16
+        ),
+        patch(
+            "python_otbr_api.OTBR.get_border_agent_id",
+            return_value=TEST_BORDER_AGENT_ID,
+        ),
+        patch(
+            "python_otbr_api.OTBR.get_extended_address",
+            return_value=TEST_BORDER_AGENT_EXTENDED_ADDRESS,
+        ),
+        patch(
+            "python_otbr_api.OTBR.get_coprocessor_version",
+            side_effect=python_otbr_api.OTBRError,
+        ),
+    ):
+        await websocket_client.send_json_auto_id({"type": "otbr/info"})
+        msg = await websocket_client.receive_json()
+
+    assert msg["success"]
+    extended_address = TEST_BORDER_AGENT_EXTENDED_ADDRESS.hex()
+    assert msg["result"] == {
+        extended_address: {
+            "url": BASE_URL,
+            "active_dataset_tlvs": DATASET_CH16.hex().lower(),
+            "channel": 16,
+            "border_agent_id": TEST_BORDER_AGENT_ID.hex(),
+            "extended_address": extended_address,
+            "extended_pan_id": "abcd1234",
+            "coprocessor_version": None,
+        }
+    }
+
+
 async def test_get_info_no_entry(
     hass: HomeAssistant,
     aioclient_mock: AiohttpClientMocker,
