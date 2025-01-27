@@ -13,10 +13,10 @@ from python_otbr_api.tlv_parser import MeshcopTLVType
 import voluptuous as vol
 import yarl
 
+from homeassistant.components import usb
 from homeassistant.components.hassio import AddonError, AddonManager
 from homeassistant.components.homeassistant_yellow import hardware as yellow_hardware
 from homeassistant.components.thread import async_get_preferred_dataset
-from homeassistant.components.usb import get_serial_by_id
 from homeassistant.config_entries import SOURCE_HASSIO, ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant, callback
@@ -196,7 +196,9 @@ class OTBRConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if (device := config.get("device", None)) is not None:
             # Use the unique device symlink
-            device = await self.hass.async_add_executor_job(get_serial_by_id, device)
+            device = await self.hass.async_add_executor_job(
+                usb.get_serial_by_id, device
+            )
 
         url = f"http://{config['host']}:{config['port']}"
         config_entry_data = {
