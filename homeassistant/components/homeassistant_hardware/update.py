@@ -246,6 +246,25 @@ class BaseFirmwareUpdateEntity(
             self._attr_update_percentage = None
             self.async_write_ha_state()
 
+    async def async_release_notes(self) -> str:
+        """Return full release notes.
+
+        This is suitable for a long changelog that does not fit in the release_summary
+        property. The returned string can contain markdown.
+        """
+        warning_message = (
+            "<ha-alert alert-type='warning'>"
+            "If you are using a Zigbee integration outside of Home Assistant "
+            "(e.g. Zigbee2MQTT), you must stop the addon before starting the update. "
+            "Otherwise, the update will fail. Home Assistant will start and stop ZHA"
+            "automatically."
+            "</ha-alert>"
+        )
+
+        return warning_message + (
+            f"\n\n{self._attr_release_summary}" if self._attr_release_summary else ""
+        )
+
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
