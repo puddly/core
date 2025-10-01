@@ -299,59 +299,6 @@ async def test_zeroconf_discovery(
     }
 
 
-@patch("homeassistant.components.zha.async_setup_entry", AsyncMock(return_value=True))
-@patch(f"zigpy_zigate.{PROBE_FUNCTION_PATH}")
-async def test_legacy_zeroconf_discovery_zigate(
-    setup_entry_mock, hass: HomeAssistant
-) -> None:
-    """Test zeroconf flow -- zigate radio detected."""
-    service_info = ZeroconfServiceInfo(
-        ip_address=ip_address("192.168.1.200"),
-        ip_addresses=[ip_address("192.168.1.200")],
-        hostname="_zigate-zigbee-gateway.local.",
-        name="some name._zigate-zigbee-gateway._tcp.local.",
-        port=1234,
-        properties={},
-        type="mock_type",
-    )
-    result_init = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=service_info
-    )
-    assert result_init["step_id"] == "confirm"
-
-    # Confirm the radio is deprecated
-    result_confirm_deprecated = await hass.config_entries.flow.async_configure(
-        result_init["flow_id"], user_input={}
-    )
-    assert result_confirm_deprecated["step_id"] == "verify_radio"
-    assert "ZiGate" in result_confirm_deprecated["description_placeholders"]["name"]
-
-    # Confirm port settings
-    result_confirm = await hass.config_entries.flow.async_configure(
-        result_confirm_deprecated["flow_id"], user_input={}
-    )
-
-    assert result_confirm["type"] is FlowResultType.MENU
-    assert result_confirm["step_id"] == "choose_setup_strategy"
-
-    result_form = await hass.config_entries.flow.async_configure(
-        result_confirm["flow_id"],
-        user_input={"next_step_id": config_flow.SETUP_STRATEGY_RECOMMENDED},
-    )
-    await hass.async_block_till_done()
-
-    assert result_form["type"] is FlowResultType.CREATE_ENTRY
-    assert result_form["title"] == "some name"
-    assert result_form["data"] == {
-        CONF_DEVICE: {
-            CONF_DEVICE_PATH: "socket://192.168.1.200:1234",
-            CONF_BAUDRATE: 115200,
-            CONF_FLOW_CONTROL: None,
-        },
-        CONF_RADIO_TYPE: "zigate",
-    }
-
-
 async def test_zeroconf_discovery_bad_payload(hass: HomeAssistant) -> None:
     """Test zeroconf flow with a bad payload."""
     service_info = ZeroconfServiceInfo(
@@ -368,77 +315,6 @@ async def test_zeroconf_discovery_bad_payload(hass: HomeAssistant) -> None:
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "invalid_zeroconf_data"
-
-
-@patch("homeassistant.components.zha.async_setup_entry", AsyncMock(return_value=True))
-@patch(f"zigpy_znp.{PROBE_FUNCTION_PATH}", AsyncMock(return_value=True))
-async def test_legacy_zeroconf_discovery_ip_change_ignored(hass: HomeAssistant) -> None:
-    """Test zeroconf flow that was ignored gets updated."""
-
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        unique_id="tubeszb-cc2652-poe",
-        source=config_entries.SOURCE_IGNORE,
-    )
-    entry.add_to_hass(hass)
-
-    service_info = ZeroconfServiceInfo(
-        ip_address=ip_address("192.168.1.200"),
-        ip_addresses=[ip_address("192.168.1.200")],
-        hostname="tubeszb-cc2652-poe.local.",
-        name="tubeszb-cc2652-poe._tubeszb._tcp.local.",
-        port=6638,
-        properties={
-            "name": "TubeZB",
-            "radio_type": "znp",
-            "version": "1.0",
-            "baud_rate": "115200",
-            "data_flow_control": "software",
-        },
-        type="_tubeszb._tcp.local.",
-    )
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=service_info
-    )
-
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "already_configured"
-    assert entry.data[CONF_DEVICE] == {
-        CONF_DEVICE_PATH: "socket://192.168.1.200:6638",
-    }
-
-
-async def test_legacy_zeroconf_discovery_confirm_final_abort_if_entries(
-    hass: HomeAssistant,
-) -> None:
-    """Test discovery aborts if ZHA was set up after the confirmation dialog is shown."""
-    service_info = ZeroconfServiceInfo(
-        ip_address=ip_address("192.168.1.200"),
-        ip_addresses=[ip_address("192.168.1.200")],
-        hostname="tube._tube_zb_gw._tcp.local.",
-        name="tube",
-        port=6053,
-        properties={"name": "tube_123456"},
-        type="mock_type",
-    )
-    flow = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=service_info
-    )
-    assert flow["step_id"] == "confirm"
-
-    # ZHA was somehow set up while we were in the config flow
-    with patch(
-        "homeassistant.config_entries.ConfigFlow._async_current_entries",
-        return_value=[MagicMock()],
-    ):
-        # Confirm discovery
-        result = await hass.config_entries.flow.async_configure(
-            flow["flow_id"], user_input={}
-        )
-
-    # Now prompts to migrate instead of aborting
-    assert result["type"] is FlowResultType.MENU
-    assert result["step_id"] == "choose_setup_strategy"
 
 
 @patch(f"zigpy_znp.{PROBE_FUNCTION_PATH}", AsyncMock(return_value=True))
@@ -884,39 +760,6 @@ async def test_discovery_via_usb_same_device_already_setup(hass: HomeAssistant) 
     # Should abort since it's the same device
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "single_instance_allowed"
-
-
-@patch("homeassistant.components.zha.async_setup_entry", AsyncMock(return_value=True))
-@patch(f"zigpy_znp.{PROBE_FUNCTION_PATH}", AsyncMock(return_value=True))
-async def test_legacy_zeroconf_discovery_already_setup(hass: HomeAssistant) -> None:
-    """Test zeroconf flow -- radio detected."""
-    service_info = ZeroconfServiceInfo(
-        ip_address=ip_address("192.168.1.200"),
-        ip_addresses=[ip_address("192.168.1.200")],
-        hostname="_tube_zb_gw._tcp.local.",
-        name="mock_name",
-        port=6053,
-        properties={"name": "tube_123456"},
-        type="mock_type",
-    )
-
-    MockConfigEntry(
-        domain=DOMAIN, data={CONF_DEVICE: {CONF_DEVICE_PATH: "/dev/ttyUSB1"}}
-    ).add_to_hass(hass)
-
-    init_result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=service_info
-    )
-    await hass.async_block_till_done()
-
-    confirm_result = await hass.config_entries.flow.async_configure(
-        init_result["flow_id"],
-        user_input={},
-    )
-
-    # When we have an existing config entry, we migrate
-    assert confirm_result["type"] is FlowResultType.MENU
-    assert confirm_result["step_id"] == "choose_migration_strategy"
 
 
 async def test_zeroconf_discovery_via_socket_already_setup_with_ip_match(

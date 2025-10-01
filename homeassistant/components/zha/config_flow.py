@@ -89,9 +89,6 @@ UPLOADED_BACKUP_FILE = "uploaded_backup_file"
 
 REPAIR_MY_URL = "https://my.home-assistant.io/redirect/repairs/"
 
-LEGACY_ZEROCONF_PORT = 6638
-LEGACY_ZEROCONF_ESPHOME_API_PORT = 6053
-
 ZEROCONF_SERVICE_TYPE = "_zigbee-coordinator._tcp.local."
 ZEROCONF_PROPERTIES_SCHEMA = vol.Schema(
     {
@@ -807,43 +804,6 @@ class ZhaConfigFlowHandler(BaseZhaFlow, ConfigFlow, domain=DOMAIN):
         self, discovery_info: ZeroconfServiceInfo
     ) -> ConfigFlowResult:
         """Handle zeroconf discovery."""
-
-        # Transform legacy zeroconf discovery into the new format
-        if discovery_info.type != ZEROCONF_SERVICE_TYPE:
-            port = discovery_info.port or LEGACY_ZEROCONF_PORT
-            name = discovery_info.name
-
-            # Fix incorrect port for older TubesZB devices
-            if "tube" in name and port == LEGACY_ZEROCONF_ESPHOME_API_PORT:
-                port = LEGACY_ZEROCONF_PORT
-
-            # Determine the radio type
-            if "radio_type" in discovery_info.properties:
-                radio_type = discovery_info.properties["radio_type"]
-            elif "efr32" in name:
-                radio_type = RadioType.ezsp.name
-            elif "zigate" in name:
-                radio_type = RadioType.zigate.name
-            else:
-                radio_type = RadioType.znp.name
-
-            fallback_title = name.split("._", 1)[0]
-            title = discovery_info.properties.get("name", fallback_title)
-
-            discovery_info = ZeroconfServiceInfo(
-                ip_address=discovery_info.ip_address,
-                ip_addresses=discovery_info.ip_addresses,
-                port=port,
-                hostname=discovery_info.hostname,
-                type=ZEROCONF_SERVICE_TYPE,
-                name=f"{title}.{ZEROCONF_SERVICE_TYPE}",
-                properties={
-                    "radio_type": radio_type,
-                    # To maintain backwards compatibility
-                    "serial_number": discovery_info.hostname.removesuffix(".local."),
-                },
-            )
-
         try:
             discovery_props = ZEROCONF_PROPERTIES_SCHEMA(discovery_info.properties)
         except vol.Invalid:
