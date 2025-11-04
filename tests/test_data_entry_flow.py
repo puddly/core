@@ -1222,6 +1222,119 @@ async def test_find_flows_by_init_data_type(manager: MockFlowManager) -> None:
     assert len(manager.async_progress()) == 0
 
 
+async def test_show_progress_done_next_step_receives_none_user_input(
+    hass: HomeAssistant, manager: MockFlowManager
+) -> None:
+    """Test next step after progress_done receives None as user_input."""
+    manager.hass = hass
+    progress_task: asyncio.Task[None] | None = None
+    next_step_user_input = None
+
+    @manager.mock_reg_handler("test")
+    class TestFlow(data_entry_flow.FlowHandler):
+        VERSION = 1
+
+        async def async_step_init(self, user_input=None):
+            if user_input is not None:
+                return await self.async_step_progress(user_input)
+            return self.async_show_form(
+                step_id="init",
+                data_schema=vol.Schema({vol.Required("username"): str}),
+            )
+
+        async def async_step_progress(self, user_input=None):
+            nonlocal progress_task
+
+            async def long_running_job() -> None:
+                await asyncio.sleep(0)
+
+            if not progress_task:
+                progress_task = hass.async_create_task(long_running_job())
+
+            if progress_task.done():
+                return self.async_show_progress_done(next_step_id="finish")
+
+            return self.async_show_progress(
+                progress_action="processing",
+                progress_task=progress_task,
+            )
+
+        async def async_step_finish(self, user_input=None):
+            nonlocal next_step_user_input
+            next_step_user_input = user_input
+
+            if user_input is not None:
+                return self.async_abort(reason="received_unexpected_input")
+
+            return self.async_show_form(
+                step_id="finish",
+                data_schema=vol.Schema({vol.Required("email"): str}),
+            )
+
+    result = await manager.async_init("test")
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await manager.async_configure(result["flow_id"], {"username": "test_user"})
+    assert result["type"] == data_entry_flow.FlowResultType.SHOW_PROGRESS
+
+    result = await manager.async_configure(result["flow_id"])
+
+    assert next_step_user_input is None
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "finish"
+
+
+async def test_external_step_done_next_step_receives_none_user_input(
+    hass: HomeAssistant, manager: MockFlowManager
+) -> None:
+    """Test next step after external_step_done receives None as user_input."""
+    manager.hass = hass
+    next_step_user_input = None
+
+    @manager.mock_reg_handler("test")
+    class TestFlow(data_entry_flow.FlowHandler):
+        VERSION = 1
+
+        async def async_step_init(self, user_input=None):
+            if user_input is not None:
+                return self.async_external_step(
+                    step_id="external", url="https://example.com"
+                )
+            return self.async_show_form(
+                step_id="init",
+                data_schema=vol.Schema({vol.Required("username"): str}),
+            )
+
+        async def async_step_external(self, user_input=None):
+            return self.async_external_step_done(next_step_id="finish")
+
+        async def async_step_finish(self, user_input=None):
+            nonlocal next_step_user_input
+            next_step_user_input = user_input
+
+            if user_input is not None:
+                return self.async_abort(reason="received_unexpected_input")
+
+            return self.async_show_form(
+                step_id="finish",
+                data_schema=vol.Schema({vol.Required("email"): str}),
+            )
+
+    result = await manager.async_init("test")
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await manager.async_configure(result["flow_id"], {"username": "test_user"})
+    assert result["type"] == data_entry_flow.FlowResultType.EXTERNAL_STEP
+
+    result = await manager.async_configure(result["flow_id"])
+
+    assert next_step_user_input is None
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "finish"
+
+
 def test_section_in_serializer() -> None:
     """Test section with custom_serializer."""
     assert cv.custom_serializer(

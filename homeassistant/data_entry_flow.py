@@ -389,6 +389,15 @@ class FlowManager(abc.ABC, Generic[_FlowContextT, _FlowResultT, _HandlerT]):
             result = await self._async_handle_step(
                 flow, user_input["next_step_id"], None
             )
+        # Handle progress done and external step done transitions
+        # Next step should receive None as these are automatic transitions
+        elif cur_step["type"] in (
+            FlowResultType.SHOW_PROGRESS_DONE,
+            FlowResultType.EXTERNAL_STEP_DONE,
+        ):
+            result = await self._async_handle_step(
+                flow, cur_step["step_id"], None
+            )
         else:
             result = await self._async_handle_step(
                 flow, cur_step["step_id"], user_input
