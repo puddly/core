@@ -17,6 +17,7 @@ from homeassistant.components.update import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, callback
+from homeassistant.helpers.hassio import is_hassio
 from homeassistant.helpers.restore_state import ExtraStoredData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -31,6 +32,12 @@ from .util import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+RELEASE_NOTES_CONTAINER_WARNING = (
+    "If you use external containers to communicate with your adapter (e.g. Zigbee2MQTT,"
+    " ot-br-posix), make sure to stop them before updating the adapter firmware."
+    " Otherwise, firmware installation will fail."
+)
 
 type FirmwareChangeCallbackType = Callable[
     [ApplicationType | None, ApplicationType | None], None
@@ -228,14 +235,26 @@ class BaseFirmwareUpdateEntity(
                 if f.filename.startswith(self.entity_description.fw_type)
             )
         except StopIteration:
-            pass
-        else:
-            version = cast(
-                str, self._latest_firmware.metadata[self.entity_description.version_key]
+            return
+
+        version = cast(
+            str, self._latest_firmware.metadata[self.entity_description.version_key]
+        )
+
+        self._attr_latest_version = self.entity_description.version_parser(version)
+        self._attr_release_url = str(self._latest_manifest.html_url)
+
+        release_notes = self._latest_firmware.release_notes or ""
+
+        if not is_hassio(self.hass):
+            # Container users have external software communicating with the adapter. We
+            # cannot stop it automatically or detect that it is running.
+            self._attr_release_summary = (
+                f"<ha-alert alert-type='warning'>{RELEASE_NOTES_CONTAINER_WARNING}</ha-alert>"
+                + release_notes
             )
-            self._attr_latest_version = self.entity_description.version_parser(version)
-            self._attr_release_summary = self._latest_firmware.release_notes
-            self._attr_release_url = str(self._latest_manifest.html_url)
+        else:
+            self._attr_release_summary = release_notes
 
     @callback
     def _handle_coordinator_update(self) -> None:
