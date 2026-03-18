@@ -30,6 +30,16 @@ def main() -> int | None:
         print("Run from project root")
         return 1
 
+    constraints_path = Path("homeassistant/package_constraints.txt")
+    excludes_path = Path("homeassistant/package_excludes.txt")
+    for requirements_path in (constraints_path, excludes_path):
+        if not requirements_path.is_file():
+            print(
+                f"Missing {requirements_path}. "
+                "Run `python3 -m script.gen_requirements_all`"
+            )
+            return 1
+
     args = get_arguments()
 
     # Gather requirements for all specified integrations
@@ -38,13 +48,27 @@ def main() -> int | None:
         requirements = gather_recursive_requirements(integration)
         all_requirements.update(requirements)
 
+    uninstall_cmd = [
+        "uv",
+        "pip",
+        "uninstall",
+        "--python",
+        sys.executable,
+        "--requirements",
+        str(excludes_path),
+    ]
+    print(" ".join(uninstall_cmd))
+    subprocess.run(uninstall_cmd, check=True)
+
     if all_requirements:
         cmd = [
             "uv",
             "pip",
             "install",
             "-c",
-            "homeassistant/package_constraints.txt",
+            str(constraints_path),
+            "--excludes",
+            str(excludes_path),
             "-U",
             "--python",
             sys.executable,

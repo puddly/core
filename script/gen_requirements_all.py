@@ -63,6 +63,21 @@ URL_PIN = (
     "creating_platform_code_review.html#1-requirements"
 )
 
+EXCLUDES_BASE = """
+# Packages excluded from uv dependency resolution in Home Assistant runtime
+# package installs. These are intentionally omitted when they appear as
+# transitive dependencies.
+pyserial
+pyserial-asyncio
+pyserial-asyncio-fast
+"""
+
+EXCLUDED_REQUIREMENTS_INSTALL = frozenset(
+    line.partition("#")[0].strip().lower().replace("_", "-").replace(".", "-")
+    for line in EXCLUDES_BASE.splitlines()
+    if line.partition("#")[0].strip()
+)
+
 
 CONSTRAINT_PATH = (
     Path(__file__).parent.parent / "homeassistant" / "package_constraints.txt"
@@ -349,6 +364,7 @@ def gather_modules() -> dict[str, list[str]] | None:
 
     gather_requirements_from_manifests(errors, reqs)
     gather_requirements_from_modules(errors, reqs)
+    validate_no_excluded_requirements(errors, reqs)
 
     for value in reqs.values():
         value = sorted(value, key=lambda name: (len(name.split(".")), name))
@@ -413,6 +429,18 @@ def gather_requirements_from_modules(
 
         if getattr(module, "REQUIREMENTS", None):
             process_requirements(errors, module.REQUIREMENTS, package, reqs)
+
+
+def validate_no_excluded_requirements(
+    errors: list[str], reqs: dict[str, list[str]]
+) -> None:
+    """Validate that no excluded requirements are included."""
+    for req, integrations in reqs.items():
+        if normalize_package_name(req) in EXCLUDED_REQUIREMENTS_INSTALL:
+            errors.append(
+                f"{req} is listed as a requirement for {integrations} but it is "
+                "excluded by homeassistant/package_excludes.txt"
+            )
 
 
 def process_requirements(
@@ -565,6 +593,11 @@ def gather_constraints() -> str:
     )
 
 
+def gather_excludes() -> str:
+    """Construct output for excludes file."""
+    return GENERATED_MESSAGE + EXCLUDES_BASE.lstrip()
+
+
 def diff_file(filename: str, content: str) -> list[str]:
     """Diff a file."""
     return list(
@@ -599,6 +632,7 @@ def main(validate: bool, ci: bool) -> int:
     # the code is called by the pre-commit hooks.
     reqs_pre_commit_file = requirements_pre_commit_output()
     constraints = gather_constraints()
+    excludes = gather_excludes()
 
     files = [
         ("requirements.txt", reqs_file),
@@ -606,6 +640,7 @@ def main(validate: bool, ci: bool) -> int:
         ("requirements_test_pre_commit.txt", reqs_pre_commit_file),
         ("requirements_test_all.txt", reqs_test_all_file),
         ("homeassistant/package_constraints.txt", constraints),
+        ("homeassistant/package_excludes.txt", excludes),
     ]
     if ci:
         files.extend(
