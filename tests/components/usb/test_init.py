@@ -1283,7 +1283,7 @@ def test_scan_serial_ports_with_unique_symlinks() -> None:
         patch("os.scandir", return_value=[entry1, entry2]),
         patch("os.path.realpath", side_effect=mock_realpath),
         patch(
-            "homeassistant.components.usb.utils.comports",
+            "homeassistant.components.usb.utils.list_serial_ports",
             return_value=[mock_port1, mock_port2],
         ),
     ):
@@ -1310,7 +1310,7 @@ def test_scan_serial_ports_without_unique_symlinks() -> None:
         patch("os.path.isdir", return_value=False),
         patch("os.path.realpath", side_effect=lambda x: x),
         patch(
-            "homeassistant.components.usb.utils.comports",
+            "homeassistant.components.usb.utils.list_serial_ports",
             return_value=[mock_port],
         ),
     ):

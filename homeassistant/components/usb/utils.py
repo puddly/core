@@ -7,8 +7,7 @@ import dataclasses
 import fnmatch
 import os
 
-from serial.tools.list_ports import comports
-from serial.tools.list_ports_common import ListPortInfo
+from serialx import SerialPortInfo, list_serial_ports
 
 from homeassistant.helpers.service_info.usb import UsbServiceInfo
 from homeassistant.loader import USBMatcher
@@ -16,15 +15,15 @@ from homeassistant.loader import USBMatcher
 from .models import USBDevice
 
 
-def usb_device_from_port(port: ListPortInfo) -> USBDevice:
-    """Convert serial ListPortInfo to USBDevice."""
+def usb_device_from_port(port: SerialPortInfo) -> USBDevice:
+    """Convert serial SerialPortInfo to USBDevice."""
     return USBDevice(
         device=port.device,
         vid=f"{hex(port.vid)[2:]:0>4}".upper(),
         pid=f"{hex(port.pid)[2:]:0>4}".upper(),
         serial_number=port.serial_number,
         manufacturer=port.manufacturer,
-        description=port.description,
+        description=port.product,
     )
 
 
@@ -40,7 +39,7 @@ def scan_serial_ports() -> Sequence[USBDevice]:
 
     serial_ports = []
 
-    for port in comports():
+    for port in list_serial_ports():
         if port.vid is not None or port.pid is not None:
             usb_device = usb_device_from_port(port)
             device_path = realpath_to_by_id.get(port.device, port.device)

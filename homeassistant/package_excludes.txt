@@ -1,0 +1,4 @@
+# The package modules are shimmed by serialx-compat[esphome]
+pyserial
+pyserial-asyncio
+pyserial-asyncio-fast
