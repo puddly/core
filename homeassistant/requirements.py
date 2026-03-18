@@ -25,6 +25,7 @@ PIP_TIMEOUT = 60
 MAX_INSTALL_FAILURES = 3
 DATA_REQUIREMENTS_MANAGER = "requirements_manager"
 CONSTRAINT_FILE = "package_constraints.txt"
+EXCLUDES_FILE = "package_excludes.txt"
 DISCOVERY_INTEGRATIONS: dict[str, Iterable[str]] = {
     "dhcp": ("dhcp",),
     "mqtt": ("mqtt",),
@@ -99,6 +100,7 @@ def pip_kwargs(config_dir: str | None) -> dict[str, Any]:
     is_docker = pkg_util.is_docker_env()
     kwargs = {
         "constraints": os.path.join(os.path.dirname(__file__), CONSTRAINT_FILE),
+        "excludes": os.path.join(os.path.dirname(__file__), EXCLUDES_FILE),
         "timeout": PIP_TIMEOUT,
     }
     if not (config_dir is None or pkg_util.is_virtual_env()) and not is_docker:

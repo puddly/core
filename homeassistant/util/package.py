@@ -130,6 +130,7 @@ def install_package(
     upgrade: bool = True,
     target: str | None = None,
     constraints: str | None = None,
+    excludes: str | None = None,
     timeout: int | None = None,
 ) -> bool:
     """Install a package on PyPi. Accepts pip compatible package strings.
@@ -158,6 +159,8 @@ def install_package(
         args.append("--upgrade")
     if constraints is not None:
         args += ["--constraint", constraints]
+    if excludes is not None:
+        args += ["--excludes", excludes]
     if target:
         abs_target = os.path.abspath(target)
         args += ["--target", abs_target]
