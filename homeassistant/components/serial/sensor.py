@@ -6,8 +6,7 @@ import asyncio
 import json
 import logging
 
-from serial import SerialException
-import serial_asyncio_fast as serial_asyncio
+from serialx import Parity, SerialException, StopBits, open_serial_connection
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
@@ -33,9 +32,9 @@ CONF_DSRDTR = "dsrdtr"
 
 DEFAULT_NAME = "Serial Sensor"
 DEFAULT_BAUDRATE = 9600
-DEFAULT_BYTESIZE = serial_asyncio.serial.EIGHTBITS
-DEFAULT_PARITY = serial_asyncio.serial.PARITY_NONE
-DEFAULT_STOPBITS = serial_asyncio.serial.STOPBITS_ONE
+DEFAULT_BYTESIZE = 8
+DEFAULT_PARITY = Parity.NONE
+DEFAULT_STOPBITS = StopBits.ONE
 DEFAULT_XONXOFF = False
 DEFAULT_RTSCTS = False
 DEFAULT_DSRDTR = False
@@ -46,30 +45,9 @@ PLATFORM_SCHEMA = SENSOR_PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_BAUDRATE, default=DEFAULT_BAUDRATE): cv.positive_int,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_VALUE_TEMPLATE): cv.template,
-        vol.Optional(CONF_BYTESIZE, default=DEFAULT_BYTESIZE): vol.In(
-            [
-                serial_asyncio.serial.FIVEBITS,
-                serial_asyncio.serial.SIXBITS,
-                serial_asyncio.serial.SEVENBITS,
-                serial_asyncio.serial.EIGHTBITS,
-            ]
-        ),
-        vol.Optional(CONF_PARITY, default=DEFAULT_PARITY): vol.In(
-            [
-                serial_asyncio.serial.PARITY_NONE,
-                serial_asyncio.serial.PARITY_EVEN,
-                serial_asyncio.serial.PARITY_ODD,
-                serial_asyncio.serial.PARITY_MARK,
-                serial_asyncio.serial.PARITY_SPACE,
-            ]
-        ),
-        vol.Optional(CONF_STOPBITS, default=DEFAULT_STOPBITS): vol.In(
-            [
-                serial_asyncio.serial.STOPBITS_ONE,
-                serial_asyncio.serial.STOPBITS_ONE_POINT_FIVE,
-                serial_asyncio.serial.STOPBITS_TWO,
-            ]
-        ),
+        vol.Optional(CONF_BYTESIZE, default=DEFAULT_BYTESIZE): vol.In([5, 6, 7, 8]),
+        vol.Optional(CONF_PARITY, default=DEFAULT_PARITY): vol.In(Parity),
+        vol.Optional(CONF_STOPBITS, default=DEFAULT_STOPBITS): vol.In(StopBits),
         vol.Optional(CONF_XONXOFF, default=DEFAULT_XONXOFF): cv.boolean,
         vol.Optional(CONF_RTSCTS, default=DEFAULT_RTSCTS): cv.boolean,
         vol.Optional(CONF_DSRDTR, default=DEFAULT_DSRDTR): cv.boolean,
@@ -174,7 +152,7 @@ class SerialSensor(SensorEntity):
         logged_error = False
         while True:
             try:
-                reader, _ = await serial_asyncio.open_serial_connection(
+                reader, _ = await open_serial_connection(
                     url=device,
                     baudrate=baudrate,
                     bytesize=bytesize,

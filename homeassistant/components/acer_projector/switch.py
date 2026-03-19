@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any
 
-import serial
+import serialx
 import voluptuous as vol
 
 from homeassistant.components.switch import (
@@ -81,8 +81,8 @@ class AcerSwitch(SwitchEntity):
         write_timeout: int,
     ) -> None:
         """Init of the Acer projector."""
-        self.serial = serial.Serial(
-            port=serial_port, timeout=timeout, write_timeout=write_timeout
+        self.serial = serialx.BaseSerial.from_url(
+            serial_port, timeout=timeout, write_timeout=write_timeout
         )
         self._serial_port = serial_port
         self._attr_name = name
@@ -106,7 +106,7 @@ class AcerSwitch(SwitchEntity):
             # AFAIK there is no limit and no end character so we will usually
             # need to wait for timeout
             ret = self.serial.read_until(size=20).decode("utf-8")
-        except serial.SerialException:
+        except serialx.SerialException:
             _LOGGER.error("Problem communicating with %s", self._serial_port)
         self.serial.close()
         return ret

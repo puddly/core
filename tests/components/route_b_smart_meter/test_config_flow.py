@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from momonga import MomongaSkJoinFailure, MomongaSkScanFailure
 import pytest
-from serial.tools.list_ports_linux import SysFS
 
 from homeassistant.components.route_b_smart_meter.const import DOMAIN, ENTRY_TITLE
+from homeassistant.components.usb import USBDevice
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_DEVICE, CONF_ID, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
@@ -16,17 +16,19 @@ from homeassistant.data_entry_flow import FlowResultType
 
 @pytest.fixture
 def mock_comports() -> Generator[AsyncMock]:
-    """Override comports."""
-    device = SysFS("/dev/ttyUSB42")
-    device.vid = 0x1234
-    device.pid = 0x5678
-    device.serial_number = "123456"
-    device.manufacturer = "Test"
-    device.description = "Test Device"
+    """Override scan_serial_ports."""
+    device = USBDevice(
+        device="/dev/ttyUSB42",
+        vid="1234",
+        pid="5678",
+        serial_number="123456",
+        manufacturer="Test",
+        description="Test Device",
+    )
 
     with patch(
-        "homeassistant.components.route_b_smart_meter.config_flow.comports",
-        return_value=[SysFS("/dev/ttyUSB41"), device],
+        "homeassistant.components.route_b_smart_meter.config_flow.scan_serial_ports",
+        return_value=[device],
     ) as mock:
         yield mock
 
