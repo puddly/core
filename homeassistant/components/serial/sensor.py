@@ -5,7 +5,7 @@ from asyncio import Task
 import json
 import logging
 
-from serialx import Parity, SerialException, StopBits, async_serial_for_url
+from serialx import Parity, StopBits, async_serial_for_url
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
@@ -190,7 +190,7 @@ class SerialSensor(SensorEntity):
                         _LOGGER.debug("Received: %s", line)
                         self._attr_native_value = line
                         self.async_write_ha_state()
-            except OSError, SerialException, TimeoutError:
+            except Exception:  # pylint: disable=broad-except
                 if not logged_error:
                     _LOGGER.exception("Error with serial device %s. Will retry", device)
                     logged_error = True
