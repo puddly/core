@@ -5,7 +5,7 @@ from asyncio import Task
 import json
 import logging
 
-from serialx import Parity, SerialException, StopBits, open_serial_connection
+from serialx import Parity, SerialException, StopBits, async_serial_for_url
 import voluptuous as vol
 
 from homeassistant.components.sensor import (
@@ -156,12 +156,9 @@ class SerialSensor(SensorEntity):
         logged_error = False
 
         while True:
-            reader = None
-            writer = None
-
             try:
-                reader, writer = await open_serial_connection(
-                    url=device,
+                async with async_serial_for_url(
+                    device,
                     baudrate=baudrate,
                     bytesize=bytesize,
                     parity=parity,
@@ -170,26 +167,11 @@ class SerialSensor(SensorEntity):
                     rtscts=rtscts,
                     dsrdtr=dsrdtr,
                     **kwargs,
-                )
-            except OSError, SerialException, TimeoutError:
-                if not logged_error:
-                    _LOGGER.exception(
-                        "Unable to connect to the serial device %s. Will retry", device
-                    )
-                    logged_error = True
-                await self._handle_error()
-            else:
-                _LOGGER.debug("Serial device %s connected", device)
-                while True:
-                    try:
-                        line_bytes = await reader.readline()
-                    except OSError, SerialException:
-                        _LOGGER.exception(
-                            "Error while reading serial device %s", device
-                        )
-                        await self._handle_error()
-                        break
-                    else:
+                ) as serial:
+                    _LOGGER.debug("Serial device %s connected", device)
+                    logged_error = False
+                    while True:
+                        line_bytes = await serial.readline()
                         line = line_bytes.decode("utf-8").strip()
 
                         try:
@@ -208,10 +190,11 @@ class SerialSensor(SensorEntity):
                         _LOGGER.debug("Received: %s", line)
                         self._attr_native_value = line
                         self.async_write_ha_state()
-            finally:
-                if writer is not None:
-                    writer.close()
-                    await writer.wait_closed()
+            except OSError, SerialException, TimeoutError:
+                if not logged_error:
+                    _LOGGER.exception("Error with serial device %s. Will retry", device)
+                    logged_error = True
+                await self._handle_error()
 
     async def _handle_error(self):
         """Handle error for serial connection."""
