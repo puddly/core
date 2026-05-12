@@ -128,14 +128,14 @@ class SerialSensor(SensorEntity):
         """Handle when an entity is about to be added to Home Assistant."""
         self._serial_loop_task = self.hass.async_create_background_task(
             self.serial_read(
-                self._port,
-                self._baudrate,
-                self._bytesize,
-                self._parity,
-                self._stopbits,
-                self._xonxoff,
-                self._rtscts,
-                self._dsrdtr,
+                device=self._port,
+                baudrate=self._baudrate,
+                bytesize=self._bytesize,
+                parity=self._parity,
+                stopbits=self._stopbits,
+                xonxoff=self._xonxoff,
+                rtscts=self._rtscts,
+                dsrdtr=self._dsrdtr,
             ),
             "Serial reader",
         )
@@ -150,7 +150,6 @@ class SerialSensor(SensorEntity):
         xonxoff: bool,
         rtscts: bool,
         dsrdtr: bool,
-        **kwargs,
     ):
         """Read the data from the port."""
         logged_error = False
@@ -166,7 +165,6 @@ class SerialSensor(SensorEntity):
                     xonxoff=xonxoff,
                     rtscts=rtscts,
                     dsrdtr=dsrdtr,
-                    **kwargs,
                 ) as serial:
                     _LOGGER.debug("Serial device %s connected", device)
                     logged_error = False
