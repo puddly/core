@@ -4,5 +4,6 @@
   "codeowners": ["@fabaff"],
   "documentation": "https://www.home-assistant.io/integrations/serial",
   "iot_class": "local_polling",
+  "loggers": ["serialx"],
   "requirements": ["serialx==1.8.0"]
 }
