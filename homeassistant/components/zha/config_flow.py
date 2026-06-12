@@ -9,7 +9,7 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from zha.application.const import RadioType
+from zha.application.helpers import RADIO_LIBRARIES, BuiltinRadioType, RadioLibrary
 import zigpy.backups
 from zigpy.config import CONF_DEVICE, CONF_DEVICE_PATH
 from zigpy.exceptions import CannotWriteNetworkSettings, DestructiveWriteNetworkSettings
@@ -53,11 +53,13 @@ from .const import (
 )
 from .helpers import get_config_entry_unique_id, get_zha_gateway
 from .radio_manager import (
+    DEPRECATED_RADIOS,
     DEVICE_SCHEMA,
     HARDWARE_DISCOVERY_SCHEMA,
-    RECOMMENDED_RADIOS,
     ProbeResult,
     ZhaRadioManager,
+    async_get_radio_libraries,
+    async_parse_radio_type,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -98,11 +100,16 @@ LEGACY_ZEROCONF_ESPHOME_API_PORT = 6053
 ZEROCONF_SERVICE_TYPE = "_zigbee-coordinator._tcp.local."
 ZEROCONF_PROPERTIES_SCHEMA = vol.Schema(
     {
-        vol.Required("radio_type"): vol.All(str, vol.In([t.name for t in RadioType])),
+        vol.Required("radio_type"): str,
         vol.Required("serial_number"): str,
     },
     extra=vol.ALLOW_EXTRA,
 )
+
+
+def _radio_type_label(library: RadioLibrary) -> str:
+    """Return the user-facing label for a radio library in the manual picker."""
+    return f"{library.display_name} = {library.description}"
 
 
 class OptionsMigrationIntent(StrEnum):
@@ -174,7 +181,7 @@ class BaseZhaFlow(ConfigEntryBaseFlow):
                     CONF_DEVICE_PATH: self._radio_mgr.device_path,
                 }
             ),
-            CONF_RADIO_TYPE: self._radio_mgr.radio_type.name,
+            CONF_RADIO_TYPE: self._radio_mgr.radio_type,
         }
 
     @abstractmethod
@@ -230,9 +237,13 @@ class BaseZhaFlow(ConfigEntryBaseFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Manually select the radio type."""
+        radio_libraries = await async_get_radio_libraries(self.hass)
+
         if user_input is not None:
-            self._radio_mgr.radio_type = RadioType.get_by_description(
-                user_input[CONF_RADIO_TYPE]
+            self._radio_mgr.radio_type = next(
+                radio_type
+                for radio_type, library in radio_libraries.items()
+                if _radio_type_label(library) == user_input[CONF_RADIO_TYPE]
             )
             return await self.async_step_manual_port_config()
 
@@ -240,10 +251,12 @@ class BaseZhaFlow(ConfigEntryBaseFlow):
         default: vol.Undefined | str = vol.UNDEFINED
 
         if self._radio_mgr.radio_type is not None:
-            default = self._radio_mgr.radio_type.description
+            default = _radio_type_label(radio_libraries[self._radio_mgr.radio_type])
 
         schema = {
-            vol.Required(CONF_RADIO_TYPE, default=default): vol.In(RadioType.list())
+            vol.Required(CONF_RADIO_TYPE, default=default): vol.In(
+                [_radio_type_label(library) for library in radio_libraries.values()]
+            )
         }
 
         return self.async_show_form(
@@ -273,9 +286,10 @@ class BaseZhaFlow(ConfigEntryBaseFlow):
                 }
             )
 
-            if await self._radio_mgr.radio_type.controller.probe(
-                self._radio_mgr.device_settings
-            ):
+            controller = await self._radio_mgr.async_import_controller(
+                self._radio_mgr.radio_type
+            )
+            if await controller.probe(self._radio_mgr.device_settings):
                 return await self.async_step_verify_radio()
 
             errors["base"] = "cannot_connect"
@@ -310,8 +324,11 @@ class BaseZhaFlow(ConfigEntryBaseFlow):
         assert self._radio_mgr.radio_type is not None
         await self._radio_mgr.async_read_backups_from_database()
 
-        # Skip this step if we are using a recommended radio
-        if user_input is not None or self._radio_mgr.radio_type in RECOMMENDED_RADIOS:
+        # Skip this step if we are not using a deprecated radio
+        if (
+            user_input is not None
+            or self._radio_mgr.radio_type not in DEPRECATED_RADIOS
+        ):
             # ZHA disables the single instance check and will decide at runtime if we
             # are migrating or setting up from scratch
             if self.hass.config_entries.async_entries(DOMAIN, include_ignore=False):
@@ -321,7 +338,9 @@ class BaseZhaFlow(ConfigEntryBaseFlow):
         return self.async_show_form(
             step_id="verify_radio",
             description_placeholders={
-                CONF_NAME: self._radio_mgr.radio_type.description,
+                CONF_NAME: _radio_type_label(
+                    RADIO_LIBRARIES[self._radio_mgr.radio_type]
+                ),
                 "docs_recommended_adapters_url": (
                     "https://www.home-assistant.io/integrations/zha/#recommended-zigbee-radio-adapters-and-modules"
                 ),
@@ -406,7 +425,7 @@ class BaseZhaFlow(ConfigEntryBaseFlow):
         temp_radio_mgr.hass = self.hass
         temp_radio_mgr.device_path = config_entry.data[CONF_DEVICE][CONF_DEVICE_PATH]
         temp_radio_mgr.device_settings = config_entry.data[CONF_DEVICE]
-        temp_radio_mgr.radio_type = RadioType[config_entry.data[CONF_RADIO_TYPE]]
+        temp_radio_mgr.radio_type = config_entry.data[CONF_RADIO_TYPE]
 
         await temp_radio_mgr.async_reset_adapter()
 
@@ -917,11 +936,11 @@ class ZhaConfigFlowHandler(BaseZhaFlow, ConfigFlow, domain=DOMAIN):
             if "radio_type" in discovery_info.properties:
                 radio_type = discovery_info.properties["radio_type"]
             elif "efr32" in name:
-                radio_type = RadioType.ezsp.name
+                radio_type = BuiltinRadioType.EZSP
             elif "zigate" in name:
-                radio_type = RadioType.zigate.name
+                radio_type = BuiltinRadioType.ZIGATE
             else:
-                radio_type = RadioType.znp.name
+                radio_type = BuiltinRadioType.ZNP
 
             fallback_title = name.split("._", 1)[0]
             title = discovery_info.properties.get("name", fallback_title)
@@ -945,7 +964,12 @@ class ZhaConfigFlowHandler(BaseZhaFlow, ConfigFlow, domain=DOMAIN):
         except vol.Invalid:
             return self.async_abort(reason="invalid_zeroconf_data")
 
-        radio_type = self._radio_mgr.parse_radio_type(discovery_props["radio_type"])
+        try:
+            radio_type = await async_parse_radio_type(
+                self.hass, discovery_props["radio_type"]
+            )
+        except KeyError:
+            return self.async_abort(reason="invalid_zeroconf_data")
         device_path = f"socket://{discovery_info.host}:{discovery_info.port}"
         title = discovery_info.name.removesuffix(f".{ZEROCONF_SERVICE_TYPE}")
 
@@ -977,13 +1001,18 @@ class ZhaConfigFlowHandler(BaseZhaFlow, ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="invalid_hardware_data")
 
         name = discovery_data["name"]
-        radio_type = self._radio_mgr.parse_radio_type(discovery_data["radio_type"])
+        try:
+            radio_type = await async_parse_radio_type(
+                self.hass, discovery_data["radio_type"]
+            )
+        except KeyError:
+            return self.async_abort(reason="invalid_hardware_data")
         device_settings = discovery_data["port"]
         device_path = device_settings[CONF_DEVICE_PATH]
         self._flow_strategy = discovery_data.get("flow_strategy")
 
         await self._set_unique_id_and_update_ignored_flow(
-            unique_id=f"{name}_{radio_type.name}_{device_path}",
+            unique_id=f"{name}_{radio_type}_{device_path}",
             device_path=device_path,
         )
 
@@ -1036,7 +1065,7 @@ class ZhaOptionsFlowHandler(BaseZhaFlow, OptionsFlow):
         super().__init__()
         self._radio_mgr.device_path = config_entry.data[CONF_DEVICE][CONF_DEVICE_PATH]
         self._radio_mgr.device_settings = config_entry.data[CONF_DEVICE]
-        self._radio_mgr.radio_type = RadioType[config_entry.data[CONF_RADIO_TYPE]]
+        self._radio_mgr.radio_type = config_entry.data[CONF_RADIO_TYPE]
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

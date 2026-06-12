@@ -12,7 +12,11 @@ from typing import Any, Self
 
 from bellows.config import CONF_USE_THREAD
 import voluptuous as vol
-from zha.application.const import RadioType
+from zha.application.helpers import (
+    BuiltinRadioType,
+    RadioLibrary,
+    get_radio_libraries as zha_get_radio_libraries,
+)
 from zigpy.application import ControllerApplication
 import zigpy.backups
 from zigpy.config import (
@@ -42,16 +46,21 @@ from .const import (
 )
 from .helpers import get_zha_data
 
-RECOMMENDED_RADIOS = (
-    RadioType.ezsp,
-    RadioType.znp,
-    RadioType.deconz,
+# Only the common built-in radio types will be autoprobed, ordered by new device
+# popularity. XBee takes too long to probe since it scans through all possible bauds
+# and likely has very few users to begin with. External radio libraries are never
+# autoprobed.
+AUTOPROBE_RADIOS = (
+    BuiltinRadioType.EZSP,
+    BuiltinRadioType.ZNP,
+    BuiltinRadioType.DECONZ,
 )
 
-# Only the common radio types will be autoprobed, ordered by new device popularity.
-# XBee takes too long to probe since it scans through all possible bauds and likely has
-# very few users to begin with.
-AUTOPROBE_RADIOS = RECOMMENDED_RADIOS
+# Legacy built-in radios that new users are warned away from during setup
+DEPRECATED_RADIOS = (
+    BuiltinRadioType.ZIGATE,
+    BuiltinRadioType.XBEE,
+)
 
 CONNECT_DELAY_S = 1.0
 RETRY_DELAY_S = 1.0
@@ -103,6 +112,22 @@ class ProbeResult(enum.StrEnum):
     PROBING_FAILED = "probing_failed"
 
 
+async def async_get_radio_libraries(hass: HomeAssistant) -> dict[str, RadioLibrary]:
+    """Return built-in and discovered external radio libraries."""
+    return await hass.async_add_import_executor_job(zha_get_radio_libraries)
+
+
+async def async_parse_radio_type(hass: HomeAssistant, radio_type: str) -> str:
+    """Parse a radio type name, accounting for past aliases."""
+    if radio_type == "efr32":
+        return BuiltinRadioType.EZSP
+
+    if radio_type not in await async_get_radio_libraries(hass):
+        raise KeyError(f"Unknown radio type: {radio_type}")
+
+    return radio_type
+
+
 def _allow_overwrite_ezsp_ieee(
     backup: zigpy.backups.NetworkBackup,
 ) -> zigpy.backups.NetworkBackup:
@@ -139,7 +164,7 @@ class ZhaRadioManager:
         """Initialize ZhaRadioManager instance."""
         self.device_path: str | None = None
         self.device_settings: dict[str, Any] | None = None
-        self.radio_type: RadioType | None = None
+        self.radio_type: str | None = None
         self.current_settings: zigpy.backups.NetworkBackup | None = None
         self.backups: list[zigpy.backups.NetworkBackup] = []
         self.chosen_backup: zigpy.backups.NetworkBackup | None = None
@@ -153,7 +178,7 @@ class ZhaRadioManager:
         mgr.hass = hass
         mgr.device_path = config_entry.data[CONF_DEVICE][CONF_DEVICE_PATH]
         mgr.device_settings = config_entry.data[CONF_DEVICE]
-        mgr.radio_type = RadioType[config_entry.data[CONF_RADIO_TYPE]]
+        mgr.radio_type = config_entry.data[CONF_RADIO_TYPE]
 
         return mgr
 
@@ -166,6 +191,17 @@ class ZhaRadioManager:
             CONF_DATABASE,
             self.hass.config.path(DEFAULT_DATABASE_NAME),
         )
+
+    async def async_import_controller(
+        self, radio_type: str
+    ) -> type[ControllerApplication]:
+        """Import the radio library and return its controller class."""
+
+        def import_controller() -> type[ControllerApplication]:
+            library = zha_get_radio_libraries()[radio_type]
+            return library.controller or library.import_controller()
+
+        return await self.hass.async_add_import_executor_job(import_controller)
 
     @contextlib.asynccontextmanager
     async def create_zigpy_app(
@@ -195,9 +231,8 @@ class ZhaRadioManager:
         app_config[CONF_NWK_BACKUP_ENABLED] = False
         app_config[CONF_USE_THREAD] = False
 
-        app = await self.radio_type.controller.new(
-            app_config, auto_form=False, start_radio=False
-        )
+        controller = await self.async_import_controller(self.radio_type)
+        app = await controller.new(app_config, auto_form=False, start_radio=False)
 
         try:
             if connect:
@@ -241,14 +276,6 @@ class ZhaRadioManager:
             )
             await app.backups.restore_backup(backup, **kwargs)
 
-    @staticmethod
-    def parse_radio_type(radio_type: str) -> RadioType:
-        """Parse a radio type name, accounting for past aliases."""
-        if radio_type == "efr32":
-            return RadioType.ezsp
-
-        return RadioType[radio_type]
-
     async def detect_radio_type(self) -> ProbeResult:
         """Probe all radio types on the current port."""
         assert self.device_path is not None
@@ -257,7 +284,8 @@ class ZhaRadioManager:
             _LOGGER.debug("Attempting to probe radio type %s", radio)
 
             dev_config = SCHEMA_DEVICE({CONF_DEVICE_PATH: self.device_path})
-            probe_result = await radio.controller.probe(dev_config)
+            controller = await self.async_import_controller(radio)
+            probe_result = await controller.probe(dev_config)
 
             if not probe_result:
                 continue
@@ -369,8 +397,8 @@ class ZhaMultiPANMigrationHelper:
         migration_data = HARDWARE_MIGRATION_SCHEMA(data)
 
         name = migration_data["new_discovery_info"]["name"]
-        new_radio_type = ZhaRadioManager.parse_radio_type(
-            migration_data["new_discovery_info"]["radio_type"]
+        new_radio_type = await async_parse_radio_type(
+            self._hass, migration_data["new_discovery_info"]["radio_type"]
         )
 
         new_device_settings = SCHEMA_DEVICE(
@@ -399,7 +427,7 @@ class ZhaMultiPANMigrationHelper:
         old_radio_mgr.hass = self._hass
         old_radio_mgr.device_path = config_entry_data[CONF_DEVICE][CONF_DEVICE_PATH]
         old_radio_mgr.device_settings = config_entry_data[CONF_DEVICE]
-        old_radio_mgr.radio_type = RadioType[config_entry_data[CONF_RADIO_TYPE]]
+        old_radio_mgr.radio_type = config_entry_data[CONF_RADIO_TYPE]
 
         for retry in range(BACKUP_RETRIES):
             try:
@@ -431,7 +459,7 @@ class ZhaMultiPANMigrationHelper:
             entry=self._config_entry,
             data={
                 CONF_DEVICE: device_settings,
-                CONF_RADIO_TYPE: self._radio_mgr.radio_type.name,
+                CONF_RADIO_TYPE: self._radio_mgr.radio_type,
             },
             options=self._config_entry.options,
             title=name,

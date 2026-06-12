@@ -1,5 +1,7 @@
 """Home Assistant Hardware firmware utilities."""
 
+from zha.application.helpers import BuiltinRadioType
+
 from homeassistant.components.homeassistant_hardware.util import (
     ApplicationType,
     FirmwareInfo,
@@ -19,7 +21,7 @@ def get_firmware_info(
     """Return firmware information for the ZHA instance, synchronously."""
 
     # We only support EZSP firmware for now
-    if config_entry.data.get("radio_type", None) != "ezsp":
+    if config_entry.data.get("radio_type", None) != BuiltinRadioType.EZSP:
         return None
 
     if (device := config_entry.data.get("device", {}).get("path")) is None:

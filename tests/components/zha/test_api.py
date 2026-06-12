@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from zha.application.const import RadioType
+from zha.application.helpers import BuiltinRadioType
 import zigpy.backups
 import zigpy.state
 
@@ -54,8 +54,10 @@ async def test_async_get_network_settings_inactive(
     controller.new = AsyncMock(return_value=zigpy_app_controller)
 
     with patch.dict(
-        "homeassistant.components.zha.api.RadioType._member_map_",
-        ezsp=MagicMock(controller=controller, description="EZSP"),
+        "homeassistant.components.zha.radio_manager.RADIO_LIBRARIES",
+        ezsp=MagicMock(
+            controller=None, import_controller=MagicMock(return_value=controller)
+        ),
     ):
         settings = await api.async_get_network_settings(hass)
 
@@ -96,7 +98,7 @@ async def test_async_get_radio_type_active(
     await setup_zha()
 
     radio_type = api.async_get_radio_type(hass)
-    assert radio_type == RadioType.ezsp
+    assert radio_type == BuiltinRadioType.EZSP
 
 
 async def test_async_get_radio_path_active(

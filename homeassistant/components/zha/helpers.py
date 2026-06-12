@@ -40,7 +40,6 @@ from zha.application.const import (
     ZHA_GW_MSG_GROUP_MEMBER_REMOVED,
     ZHA_GW_MSG_GROUP_REMOVED,
     ZHA_GW_MSG_RAW_INIT,
-    RadioType,
 )
 from zha.application.gateway import (
     ConnectionLostEvent,
@@ -1317,7 +1316,7 @@ def create_zha_config(hass: HomeAssistant, ha_zha_data: HAZHAData) -> ZHAData:
     app_config[CONF_DATABASE] = database
     app_config[CONF_DEVICE] = ha_zha_data.config_entry.data[CONF_DEVICE]
 
-    radio_type = RadioType[ha_zha_data.config_entry.data[CONF_RADIO_TYPE]]
+    radio_type = ha_zha_data.config_entry.data[CONF_RADIO_TYPE]
 
     # Until we have a way to coordinate channels with the Thread half of multi-PAN,
     # stick to the old zigpy default of channel 15 instead of dynamically scanning
@@ -1357,7 +1356,7 @@ def create_zha_config(hass: HomeAssistant, ha_zha_data: HAZHAData) -> ZHAData:
         path=app_config[CONF_DEVICE][CONF_DEVICE_PATH],
         baudrate=app_config[CONF_DEVICE][CONF_BAUDRATE],
         flow_control=app_config[CONF_DEVICE][CONF_FLOW_CONTROL],
-        radio_type=radio_type.name,
+        radio_type=radio_type,
     )
     quirks_config: QuirksConfiguration = QuirksConfiguration(
         enabled=ha_zha_data.yaml_config.get(CONF_ENABLE_QUIRKS, True),

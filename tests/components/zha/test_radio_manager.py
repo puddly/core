@@ -4,7 +4,7 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import pytest
-from zha.application.const import RadioType
+from zha.application.helpers import RADIO_LIBRARIES, BuiltinRadioType
 from zigpy.backups import BackupManager
 import zigpy.config
 from zigpy.config import CONF_DEVICE_PATH
@@ -60,14 +60,15 @@ def backup():
 
 
 def mock_detect_radio_type(
-    radio_type: RadioType = RadioType.ezsp,
+    radio_type: str = BuiltinRadioType.EZSP,
     ret: ProbeResult = ProbeResult.RADIO_TYPE_DETECTED,
 ):
     """Mock `detect_radio_type` that just sets the appropriate attributes."""
 
     async def detect(self) -> ProbeResult:
         self.radio_type = radio_type
-        self.device_settings = radio_type.controller.SCHEMA_DEVICE(
+        controller = RADIO_LIBRARIES[radio_type].import_controller()
+        self.device_settings = controller.SCHEMA_DEVICE(
             {CONF_DEVICE_PATH: self.device_path}
         )
 
@@ -439,7 +440,7 @@ async def test_detect_radio_type_success(radio_manager: ZhaRadioManager) -> None
         assert (
             await radio_manager.detect_radio_type() == ProbeResult.RADIO_TYPE_DETECTED
         )
-        assert radio_manager.radio_type == RadioType.znp
+        assert radio_manager.radio_type == BuiltinRadioType.ZNP
 
 
 async def test_detect_radio_type_failure_wrong_firmware(
@@ -480,7 +481,7 @@ async def test_load_network_settings_oserror(
 ) -> None:
     """Test that OSError during network settings loading is handled."""
     radio_manager.device_path = "/dev/ttyZigbee"
-    radio_manager.radio_type = RadioType.ezsp
+    radio_manager.radio_type = BuiltinRadioType.EZSP
     radio_manager.device_settings = {"database": "/test/db/path"}
 
     with (
@@ -494,7 +495,7 @@ async def test_create_zigpy_app_connect_oserror(
     radio_manager: ZhaRadioManager, hass: HomeAssistant, mock_app
 ) -> None:
     """Test that OSError during zigpy app connection is handled."""
-    radio_manager.radio_type = RadioType.ezsp
+    radio_manager.radio_type = BuiltinRadioType.EZSP
     radio_manager.device_settings = {CONF_DEVICE_PATH: "/dev/ttyZigbee"}
 
     mock_app.connect.side_effect = OSError("Test error")

@@ -1183,7 +1183,7 @@ async def websocket_get_network_settings(
     connection.send_result(
         msg[ID],
         {
-            "radio_type": async_get_radio_type(hass, config_entry).name,
+            "radio_type": async_get_radio_type(hass, config_entry),
             "device": zha_gateway.application_controller.config[CONF_DEVICE],
             "settings": backup.as_dict(),
         },

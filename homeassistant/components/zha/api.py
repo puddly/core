@@ -2,7 +2,6 @@
 
 from typing import TYPE_CHECKING, Literal
 
-from zha.application.const import RadioType
 from zigpy.backups import NetworkBackup
 from zigpy.config import CONF_DEVICE, CONF_DEVICE_PATH
 from zigpy.types import Channels
@@ -71,12 +70,12 @@ async def async_get_network_settings(
 
 def async_get_radio_type(
     hass: HomeAssistant, config_entry: ConfigEntry | None = None
-) -> RadioType:
+) -> str:
     """Get ZHA radio type."""
     if config_entry is None:
         config_entry = _get_config_entry(hass)
 
-    return RadioType[config_entry.data[CONF_RADIO_TYPE]]
+    return config_entry.data[CONF_RADIO_TYPE]
 
 
 def async_get_radio_path(

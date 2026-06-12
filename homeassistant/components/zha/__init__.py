@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 import voluptuous as vol
 from yarl import URL
-from zha.application.const import BAUD_RATES, RadioType
+from zha.application.const import BAUD_RATES
 from zha.application.gateway import Gateway
-from zha.application.helpers import ZHAData
+from zha.application.helpers import RADIO_LIBRARIES, BuiltinRadioType, ZHAData
 from zha.zigbee.device import get_device_automation_triggers
 from zigpy.config import CONF_DATABASE, CONF_DEVICE, CONF_DEVICE_PATH
 from zigpy.exceptions import NetworkSettingsInconsistent, TransientConnectionError
@@ -70,7 +70,7 @@ ZHA_CONFIG_SCHEMA = {
     ),
     vol.Optional(CONF_ENABLE_QUIRKS, default=True): cv.boolean,
     vol.Optional(CONF_ZIGPY): dict,
-    vol.Optional(CONF_RADIO_TYPE): cv.enum(RadioType),
+    vol.Optional(CONF_RADIO_TYPE): vol.In(list(RADIO_LIBRARIES)),
     vol.Optional(CONF_USB_PATH): cv.string,
     vol.Optional(CONF_CUSTOM_QUIRKS_PATH): cv.isdir,
 }
@@ -203,7 +203,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 
         if (
             not device_path.startswith("socket://")
-            and RadioType[config_entry.data[CONF_RADIO_TYPE]] == RadioType.ezsp
+            and config_entry.data[CONF_RADIO_TYPE] == BuiltinRadioType.EZSP
         ):
             try:
                 # Ignore all exceptions during probing, they shouldn't halt setup
@@ -316,7 +316,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         }
 
         baudrate = get_zha_data(hass).yaml_config.get(CONF_BAUDRATE)
-        if data[CONF_RADIO_TYPE] != RadioType.deconz and baudrate in BAUD_RATES:
+        if data[CONF_RADIO_TYPE] != BuiltinRadioType.DECONZ and baudrate in BAUD_RATES:
             data[CONF_DEVICE][CONF_BAUDRATE] = baudrate
 
         hass.config_entries.async_update_entry(config_entry, data=data, version=2)
@@ -325,7 +325,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         data = {**config_entry.data}
 
         if data[CONF_RADIO_TYPE] == "ti_cc":
-            data[CONF_RADIO_TYPE] = "znp"
+            data[CONF_RADIO_TYPE] = BuiltinRadioType.ZNP
 
         hass.config_entries.async_update_entry(config_entry, data=data, version=3)
 
@@ -334,11 +334,11 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
 
         if not data[CONF_DEVICE].get(CONF_BAUDRATE):
             data[CONF_DEVICE][CONF_BAUDRATE] = {
-                "deconz": 38400,
-                "xbee": 57600,
-                "ezsp": 57600,
-                "znp": 115200,
-                "zigate": 115200,
+                BuiltinRadioType.DECONZ: 38400,
+                BuiltinRadioType.XBEE: 57600,
+                BuiltinRadioType.EZSP: 57600,
+                BuiltinRadioType.ZNP: 115200,
+                BuiltinRadioType.ZIGATE: 115200,
             }[data[CONF_RADIO_TYPE]]
 
         if not data[CONF_DEVICE].get(CONF_FLOW_CONTROL):

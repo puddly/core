@@ -226,16 +226,11 @@ def mock_zigpy_connect(
     zigpy_app_controller: ControllerApplication,
 ) -> Generator[ControllerApplication]:
     """Patch the zigpy radio connection with our mock application."""
-    with (
-        patch(
-            "bellows.zigbee.application.ControllerApplication.new",
-            return_value=zigpy_app_controller,
-        ),
-        patch(
-            "bellows.zigbee.application.ControllerApplication",
-            return_value=zigpy_app_controller,
-        ),
-    ):
+    with patch(
+        "bellows.zigbee.application.ControllerApplication",
+        return_value=zigpy_app_controller,
+    ) as mock_app:
+        mock_app.new = AsyncMock(return_value=zigpy_app_controller)
         yield zigpy_app_controller
 
 
