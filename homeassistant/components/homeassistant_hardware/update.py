@@ -96,7 +96,9 @@ class BaseFirmwareUpdateEntity(
     # Subclasses provide the mapping between firmware types and entity descriptions
     entity_description: FirmwareUpdateEntityDescription
     _attr_supported_features = (
-        UpdateEntityFeature.INSTALL | UpdateEntityFeature.PROGRESS
+        UpdateEntityFeature.INSTALL
+        | UpdateEntityFeature.PROGRESS
+        | UpdateEntityFeature.RELEASE_NOTES
     )
     _attr_has_entity_name = True
     _flasher_cls: type[DeviceSpecificFlasher]
@@ -244,6 +246,20 @@ class BaseFirmwareUpdateEntity(
             self._attr_latest_version = self.entity_description.version_parser(version)
             self._attr_release_summary = self._latest_firmware.release_notes
             self._attr_release_url = str(self._latest_manifest.html_url)
+
+    @override
+    async def async_release_notes(self) -> str | None:
+        """Return the detailed changelog for the latest firmware."""
+        if self._latest_firmware is None:
+            return None
+
+        # The manifest's field names are inverted: `release_notes` holds the changelog
+        # entry's first line (already exposed as the release summary) and
+        # `release_summary` holds the remaining detail lines. Older firmwares have no
+        # detail body, so fall back to the summary line to avoid an empty dialog.
+        return (
+            self._latest_firmware.release_summary or self._latest_firmware.release_notes
+        )
 
     @callback
     @override

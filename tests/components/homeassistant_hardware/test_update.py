@@ -61,6 +61,7 @@ from tests.common import (
     mock_platform,
     mock_restore_cache_with_extra_data,
 )
+from tests.typing import WebSocketGenerator
 
 TEST_DEVICE = "/dev/serial/by-id/some-unique-serial-device-12345"
 TEST_UPDATE_ENTITY_ID = "update.mock_name_firmware"
@@ -540,6 +541,82 @@ async def test_update_entity_firmware_missing_from_manifest(
     assert state.attributes["latest_version"] is None
     assert state.attributes["release_summary"] is None
     assert state.attributes["release_url"] is None
+
+
+async def test_update_entity_release_notes(
+    hass: HomeAssistant,
+    update_config_entry: ConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """Test the firmware update entity exposes the changelog detail body."""
+
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (
+                State(TEST_UPDATE_ENTITY_ID, "on"),
+                FirmwareUpdateExtraStoredData(
+                    firmware_manifest=dataclasses.replace(
+                        TEST_MANIFEST,
+                        firmwares=(
+                            dataclasses.replace(
+                                TEST_MANIFEST.firmwares[0],
+                                release_summary="- First change\n- Second change",
+                            ),
+                        ),
+                    )
+                ).as_dict(),
+            )
+        ],
+    )
+
+    assert await hass.config_entries.async_setup(update_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    # The changelog entry's first line stays the summary
+    state = hass.states.get(TEST_UPDATE_ENTITY_ID)
+    assert state is not None
+    assert state.attributes["release_summary"] == "Some release notes go here"
+
+    # ...and the remaining detail lines are served as the release notes
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": "update/release_notes", "entity_id": TEST_UPDATE_ENTITY_ID}
+    )
+    result = await client.receive_json()
+    assert result["success"]
+    assert result["result"] == "- First change\n- Second change"
+
+
+async def test_update_entity_release_notes_without_detail(
+    hass: HomeAssistant,
+    update_config_entry: ConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """Test firmware with no changelog detail falls back to the summary line."""
+
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (
+                State(TEST_UPDATE_ENTITY_ID, "on"),
+                FirmwareUpdateExtraStoredData(
+                    firmware_manifest=TEST_MANIFEST
+                ).as_dict(),
+            )
+        ],
+    )
+
+    assert await hass.config_entries.async_setup(update_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": "update/release_notes", "entity_id": TEST_UPDATE_ENTITY_ID}
+    )
+    result = await client.receive_json()
+    assert result["success"]
+    assert result["result"] == "Some release notes go here"
 
 
 async def test_update_entity_graceful_firmware_type_callback_errors(
