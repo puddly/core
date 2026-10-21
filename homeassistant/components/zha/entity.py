@@ -52,6 +52,10 @@ class ZHAEntity(LogMixin, RestoreEntity, Entity):
         meta = self._zha_state
         self._attr_unique_id = meta.unique_id
 
+        if meta.icon is not None:
+            # Only custom quirks and BACnet analog outputs realistically set an icon
+            self._attr_icon = meta.icon
+
         if (group := self.entity_data.group) is not None:
             platform = self.entity_data.entity.PLATFORM
             unique_ids = [
