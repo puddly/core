@@ -11,10 +11,10 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
-from .helpers import async_get_zha_device_proxy
+from .helpers import async_get_zha_device
 
 if TYPE_CHECKING:
-    from zha.zigbee.device import Device
+    from zha.client.device import Device
 
 
 @callback
@@ -41,10 +41,8 @@ def async_describe_events(
             )
             if device:
                 device_name = device.name_by_user or device.name or "Unknown device"
-            zha_device = async_get_zha_device_proxy(
-                hass, event.data[ATTR_DEVICE_ID]
-            ).device
-        except KeyError, AttributeError:
+            zha_device = async_get_zha_device(hass, event.data[ATTR_DEVICE_ID])
+        except KeyError, ValueError:
             pass
 
         if (

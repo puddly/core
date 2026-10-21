@@ -31,8 +31,8 @@ from .helpers import (
     SIGNAL_ADD_ENTITIES,
     EntityData,
     async_add_entities as zha_async_add_entities,
+    get_zha_client,
     get_zha_data,
-    get_zha_gateway,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,8 +58,11 @@ async def async_setup_entry(
     """Set up the Zigbee Home Automation update from config entry."""
     zha_data = get_zha_data(hass)
     if zha_data.update_coordinator is None:
+        client = get_zha_client(hass)
+        # OTA broadcasts are not part of the client API yet
+        assert client.server is not None
         zha_data.update_coordinator = ZHAFirmwareUpdateCoordinator(
-            hass, config_entry, get_zha_gateway(hass).application_controller
+            hass, config_entry, client.server.gateway.application_controller
         )
     entities_to_create = zha_data.platforms[Platform.UPDATE]
 
@@ -69,7 +72,9 @@ async def async_setup_entry(
         functools.partial(
             zha_async_add_entities,
             async_add_entities,
-            ZHAFirmwareUpdateEntity,
+            functools.partial(
+                ZHAFirmwareUpdateEntity, coordinator=zha_data.update_coordinator
+            ),
             entities_to_create,
         ),
     )
@@ -133,13 +138,16 @@ class ZHAFirmwareUpdateEntity(
 
         return features
 
-    def __init__(self, entity_data: EntityData, **kwargs: Any) -> None:
-        """Initialize the ZHA siren."""
-        zha_data = get_zha_data(entity_data.device_proxy.gateway_proxy.hass)
-        assert zha_data.update_coordinator is not None
-
-        super().__init__(entity_data, coordinator=zha_data.update_coordinator, **kwargs)
-        CoordinatorEntity.__init__(self, zha_data.update_coordinator)
+    def __init__(
+        self,
+        entity_data: EntityData,
+        *,
+        coordinator: ZHAFirmwareUpdateCoordinator,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize the ZHA firmware update entity."""
+        super().__init__(entity_data, coordinator=coordinator, **kwargs)
+        CoordinatorEntity.__init__(self, coordinator)
 
     @property
     @override
@@ -191,7 +199,7 @@ class ZHAFirmwareUpdateEntity(
         property. The returned string can contain markdown.
         """
 
-        if self.entity_data.device_proxy.device.is_mains_powered:
+        if self.entity_data.device.is_mains_powered:
             header = f"<ha-alert alert-type='info'>{OTA_MESSAGE_RELIABILITY}</ha-alert>"
         else:
             header = (

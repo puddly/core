@@ -5,7 +5,6 @@ from importlib.metadata import version
 from typing import Any
 
 from zha.application.const import ATTR_IEEE
-from zha.application.gateway import Gateway
 from zigpy.application import ControllerApplication
 from zigpy.config import CONF_NWK_EXTENDED_PAN_ID
 from zigpy.types import Channels
@@ -17,12 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import CONF_ALARM_MASTER_CODE
-from .helpers import (
-    ZHADeviceProxy,
-    async_get_zha_device_proxy,
-    get_zha_data,
-    get_zha_gateway,
-)
+from .helpers import async_get_zha_device, get_zha_client, get_zha_data, get_zha_gateway
 
 KEYS_TO_REDACT = {
     ATTR_IEEE,
@@ -80,8 +74,11 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     zha_data = get_zha_data(hass)
-    gateway: Gateway = get_zha_gateway(hass)
-    app = gateway.application_controller
+    gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Network state and energy scans are not part of the client API yet
+    assert client.server is not None
+    app = client.server.gateway.application_controller
 
     energy_scan = await app.energy_scan(
         channels=Channels.ALL_CHANNELS, duration_exp=4, count=1
@@ -122,6 +119,6 @@ async def async_get_device_diagnostics(
     hass: HomeAssistant, config_entry: ConfigEntry, device: dr.AnyDeviceEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a device."""
-    zha_device_proxy: ZHADeviceProxy = async_get_zha_device_proxy(hass, device.id)
-    diagnostics_json: dict[str, Any] = zha_device_proxy.device.get_diagnostics_json()
+    zha_device = async_get_zha_device(hass, device.id)
+    diagnostics_json = await zha_device.async_get_diagnostics_json()
     return async_redact_data(diagnostics_json, KEYS_TO_REDACT)

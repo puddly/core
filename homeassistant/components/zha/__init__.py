@@ -7,9 +7,10 @@ from zoneinfo import ZoneInfo
 import probatio
 from yarl import URL
 from zha.application.const import BAUD_RATES, RadioType
-from zha.application.gateway import Gateway
 from zha.application.helpers import ZHAData
+from zha.client.client import Client
 from zha.quirks import DEVICE_REGISTRY
+from zha.server.server import LocalTransport, Server
 from zha.zigbee.device import get_device_automation_triggers
 from zigpy.config import CONF_DATABASE, CONF_DEVICE, CONF_DEVICE_PATH
 from zigpy.exceptions import NetworkSettingsInconsistent, TransientConnectionError
@@ -50,7 +51,8 @@ from .const import (
 from .helpers import (
     SIGNAL_ADD_ENTITIES,
     HAZHAData,
-    ZHAGatewayProxy,
+    ZHAEventHandler,
+    ZHALogRelay,
     create_zha_config,
     get_config_entry_unique_id,
     get_zha_data,
@@ -163,7 +165,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> N
     ha_zha_data.config_entry = config_entry
     zha_lib_data: ZHAData = create_zha_config(hass, ha_zha_data)
 
-    zha_gateway = await Gateway.async_from_config(zha_lib_data)
+    zha_server = await Server.async_from_config(zha_lib_data)
+    zha_gateway = zha_server.gateway
 
     # Load and cache device trigger information early. Quirks were registered by
     # `Gateway.async_from_config` above, so pass the resolver to quirk devices
@@ -194,7 +197,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> N
     _raise_if_port_in_use(hass, device_path)
 
     try:
-        await zha_gateway.async_initialize()
+        await zha_server.async_initialize()
     except NetworkSettingsInconsistent as exc:
         await warn_on_inconsistent_network_settings(
             hass,
@@ -231,10 +234,21 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> N
         unique_id = get_config_entry_unique_id(zha_gateway.state.network_info)
         hass.config_entries.async_update_entry(config_entry, unique_id=unique_id)
 
-    ha_zha_data.gateway_proxy = ZHAGatewayProxy(hass, config_entry, zha_gateway)
+    zha_client = Client(LocalTransport(zha_server))
+    await zha_client.connect()
+    ha_zha_data.client = zha_client
+    ha_zha_data.log_relay = ZHALogRelay(hass)
+    zha_handler = ZHAEventHandler(hass, config_entry, zha_client)
+    ha_zha_data.handler = zha_handler
 
-    # Ensure the gateway is torn down if setup fails after this point
-    config_entry.async_on_unload(ha_zha_data.gateway_proxy.shutdown)
+    async def async_shutdown_zha() -> None:
+        """Tear down the client, then the server it talks to."""
+        zha_handler.async_stop()
+        await zha_client.disconnect()
+        await zha_server.shutdown()
+
+    # Ensure everything is torn down if setup fails after this point
+    config_entry.async_on_unload(async_shutdown_zha)
 
     manufacturer = zha_gateway.state.node_info.manufacturer
     model = zha_gateway.state.node_info.model
@@ -257,8 +271,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> N
 
     async def async_shutdown(_: Event) -> None:
         """Handle shutdown tasks."""
-        assert ha_zha_data.gateway_proxy is not None
-        await ha_zha_data.gateway_proxy.shutdown()
+        await async_shutdown_zha()
 
     config_entry.async_on_unload(
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, async_shutdown)
@@ -281,7 +294,8 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> N
             firmware_info=fw_info,
         )
 
-    await ha_zha_data.gateway_proxy.async_initialize_devices_and_entities()
+    zha_handler.async_start()
+    await zha_server.async_initialize_devices_and_entities()
     await hass.config_entries.async_forward_entry_setups(config_entry, PLATFORMS)
     async_dispatcher_send(hass, SIGNAL_ADD_ENTITIES)
 
@@ -292,7 +306,11 @@ async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
 
     ha_zha_data = get_zha_data(hass)
     ha_zha_data.config_entry = None
-    ha_zha_data.gateway_proxy = None
+    ha_zha_data.client = None
+    ha_zha_data.handler = None
+    ha_zha_data.log_relay = None
+    ha_zha_data.device_ids.clear()
+    ha_zha_data.entity_refs.clear()
     ha_zha_data.update_coordinator = None
 
     # clean up any remaining entity metadata

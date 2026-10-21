@@ -12,7 +12,7 @@ from propcache.api import cached_property
 from zha.application.platforms import EntityStateChangedEvent
 from zha.mixins import LogMixin
 
-from homeassistant.const import ATTR_MANUFACTURER, ATTR_MODEL, ATTR_NAME, EntityCategory
+from homeassistant.const import EntityCategory
 from homeassistant.core import State, callback
 from homeassistant.helpers.device_registry import CONNECTION_ZIGBEE, DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -27,6 +27,9 @@ from .helpers import (
     SIGNAL_REMOVE_ENTITY,
     EntityData,
     convert_zha_error_to_ha_error,
+    register_entity_reference,
+    remove_entity_reference,
+    update_entity_reference,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,20 +49,14 @@ class ZHAEntity(LogMixin, RestoreEntity, Entity):
         self._unsubs: list[Callable[[], None]] = []
         self._zha_state = self.entity_data.entity.state
 
-        if self.entity_data.entity.icon is not None:
-            # Only custom quirks will realistically set an icon
-            self._attr_icon = self.entity_data.entity.icon
-
         meta = self._zha_state
         self._attr_unique_id = meta.unique_id
 
-        if self.entity_data.is_group_entity:
-            group_proxy = self.entity_data.group_proxy
-            assert group_proxy is not None
+        if (group := self.entity_data.group) is not None:
             platform = self.entity_data.entity.PLATFORM
             unique_ids = [
                 entity.identifiers.unique_id
-                for member in group_proxy.group.members
+                for member in group.members
                 for entity in member.associated_entities
                 if platform == entity.PLATFORM
             ]
@@ -126,15 +123,15 @@ class ZHAEntity(LogMixin, RestoreEntity, Entity):
     @override
     def device_info(self) -> DeviceInfo:
         """Return a device description for device registry."""
-        zha_device_info = self.entity_data.device_proxy.device_info
-        ieee = zha_device_info["ieee"]
+        device = self.entity_data.device
+        ieee = str(device.ieee)
 
         return DeviceInfo(
             connections={(CONNECTION_ZIGBEE, ieee)},
             identifiers={(DOMAIN, ieee)},
-            manufacturer=zha_device_info[ATTR_MANUFACTURER],
-            model=zha_device_info[ATTR_MODEL],
-            name=zha_device_info[ATTR_NAME],
+            manufacturer=device.manufacturer,
+            model=device.model,
+            name=device.name or ieee,
         )
 
     def _update_capability_attrs(self) -> None:
@@ -153,10 +150,9 @@ class ZHAEntity(LogMixin, RestoreEntity, Entity):
         """Run when about to be added to hass."""
         self.remove_future = self.hass.loop.create_future()
         remove_signal = (
-            f"{SIGNAL_REMOVE_ENTITIES}_group_{self.entity_data.group_proxy.group.group_id}"
-            if self.entity_data.is_group_entity
-            and self.entity_data.group_proxy is not None
-            else f"{SIGNAL_REMOVE_ENTITIES}_{self.entity_data.device_proxy.device.ieee}"
+            f"{SIGNAL_REMOVE_ENTITIES}_group_{group.group_id}"
+            if (group := self.entity_data.group) is not None
+            else f"{SIGNAL_REMOVE_ENTITIES}_{self.entity_data.device.ieee}"
         )
         self._unsubs.append(
             async_dispatcher_connect(
@@ -175,10 +171,8 @@ class ZHAEntity(LogMixin, RestoreEntity, Entity):
                 self.async_remove,
             )
         )
-        self.entity_data.device_proxy.gateway_proxy.register_entity_reference(
-            self.entity_id,
-            self.entity_data,
-            self.remove_future,
+        register_entity_reference(
+            self.hass, self.entity_id, self.entity_data, self.remove_future
         )
 
         if (state := await self.async_get_last_state()) is not None:
@@ -197,9 +191,7 @@ class ZHAEntity(LogMixin, RestoreEntity, Entity):
     def async_entity_id_changed(self, old_entity_id: str) -> None:
         """Update the gateway entity reference to the new entity_id."""
         super().async_entity_id_changed(old_entity_id)
-        self.entity_data.device_proxy.gateway_proxy.update_entity_reference(
-            self, old_entity_id
-        )
+        update_entity_reference(self.hass, self, old_entity_id)
 
     @callback
     def restore_external_state_attributes(self, state: State) -> None:
@@ -216,7 +208,7 @@ class ZHAEntity(LogMixin, RestoreEntity, Entity):
         for unsub in self._unsubs[:]:
             unsub()
             self._unsubs.remove(unsub)
-        self.entity_data.device_proxy.gateway_proxy.remove_entity_reference(self)
+        remove_entity_reference(self.hass, self)
         await super().async_will_remove_from_hass()
         self.remove_future.set_result(True)
 

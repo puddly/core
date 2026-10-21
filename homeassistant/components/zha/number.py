@@ -48,9 +48,8 @@ class ZhaNumber(ZHAEntity, RestoreNumber):
     def __init__(self, entity_data: EntityData, **kwargs: Any) -> None:
         """Initialize the ZHA number entity."""
         super().__init__(entity_data, **kwargs)
-        entity = entity_data.entity
-        if entity.device_class is not None:
-            self._attr_device_class = NumberDeviceClass(entity.device_class)
+        if self._zha_state.device_class is not None:
+            self._attr_device_class = NumberDeviceClass(self._zha_state.device_class)
 
     @override
     def _update_capability_attrs(self) -> None:

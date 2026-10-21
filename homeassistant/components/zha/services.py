@@ -23,15 +23,16 @@ from zha.application.const import (
     ATTR_WARNING_DEVICE_STROBE_INTENSITY,
     CLUSTER_TYPE_IN,
 )
-from zha.application.gateway import Gateway
 from zha.application.platforms.siren import (
-    BaseSiren,
     SirenLevel,
     SquawkMode,
     Strobe,
     StrobeLevel,
     WarningMode,
 )
+from zha.client.client import Client
+from zha.client.gateway import Gateway
+from zha.client.platforms import SirenEntity
 from zigpy.types.named import EUI64, KeyData
 from zigpy.typing import (
     UNDEFINED as ZIGPY_UNDEFINED,
@@ -185,20 +186,30 @@ SERVICE_SCHEMAS: dict[str, VolSchemaType] = {
 }
 
 
-def _get_gateway(service: ServiceCall) -> Gateway:
-    """Return the ZHA gateway, raising a user-facing error if it is unavailable."""
-    if (gateway_proxy := get_zha_data(service.hass).gateway_proxy) is None:
+def _get_client(service: ServiceCall) -> Client:
+    """Return the ZHA client, raising a user-facing error if it is unavailable."""
+    if (client := get_zha_data(service.hass).client) is None:
         raise ServiceValidationError(
             translation_domain=DOMAIN,
             translation_key="no_gateway",
         )
 
-    return gateway_proxy.gateway
+    return client
+
+
+def _get_gateway(service: ServiceCall) -> Gateway:
+    """Return the client gateway model, raising a user-facing error if unavailable."""
+    gateway = _get_client(service).gateway
+    assert gateway is not None
+    return gateway
 
 
 async def _permit(service: ServiceCall) -> None:
     """Allow devices to join this network."""
-    application_controller = _get_gateway(service).application_controller
+    client = _get_client(service)
+    # Permitting joins is not part of the client API yet
+    assert client.server is not None
+    application_controller = client.server.gateway.application_controller
     duration: int = service.data[ATTR_DURATION]
     ieee: EUI64 | None = service.data.get(ATTR_IEEE)
     src_ieee: EUI64
@@ -340,7 +351,10 @@ async def _issue_zigbee_cluster_command(service: ServiceCall) -> None:
 
 async def _issue_zigbee_group_command(service: ServiceCall) -> None:
     """Issue command on zigbee cluster on a zigbee group."""
-    zha_gateway = _get_gateway(service)
+    client = _get_client(service)
+    # Raw group cluster commands are not part of the client API yet
+    assert client.server is not None
+    zha_gateway = client.server.gateway
     group_id: int = service.data[ATTR_GROUP]
     cluster_id: int = service.data[ATTR_CLUSTER_ID]
     command: int = service.data[ATTR_COMMAND]
@@ -381,7 +395,8 @@ async def _warning_device_squawk(service: ServiceCall) -> None:
     level: int = service.data[ATTR_LEVEL]
 
     device = zha_gateway.get_device(ieee)
-    siren: BaseSiren = device.get_entity(Platform.SIREN, pick_first=True)
+    siren = device.get_entity(Platform.SIREN, pick_first=True)
+    assert isinstance(siren, SirenEntity)
 
     await siren.async_squawk(mode=mode, strobe=strobe, squawk_level=level)
 
@@ -398,7 +413,8 @@ async def _warning_device_warn(service: ServiceCall) -> None:
     intensity: int = service.data[ATTR_WARNING_DEVICE_STROBE_INTENSITY]
 
     device = zha_gateway.get_device(ieee)
-    siren: BaseSiren = device.get_entity(Platform.SIREN, pick_first=True)
+    siren = device.get_entity(Platform.SIREN, pick_first=True)
+    assert isinstance(siren, SirenEntity)
 
     await siren.async_turn_on(
         tone=mode,

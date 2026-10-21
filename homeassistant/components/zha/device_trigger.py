@@ -15,7 +15,7 @@ from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
-from .helpers import async_get_zha_device_proxy, get_zha_data
+from .helpers import async_get_zha_device, get_zha_data
 
 CONF_SUBTYPE = "subtype"
 DEVICE = "device"
@@ -31,7 +31,7 @@ def _get_device_trigger_data(hass: HomeAssistant, device_id: str) -> tuple[str, 
 
     # First, try checking to see if the device itself is accessible
     try:
-        zha_device = async_get_zha_device_proxy(hass, device_id).device
+        zha_device = async_get_zha_device(hass, device_id)
     except ValueError:
         pass
     else:

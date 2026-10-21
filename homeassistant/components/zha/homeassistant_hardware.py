@@ -9,7 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN
-from .helpers import get_zha_gateway
+from .helpers import get_zha_client
 
 
 @callback
@@ -26,11 +26,13 @@ def get_firmware_info(
         return None
 
     try:
-        gateway = get_zha_gateway(hass)
+        client = get_zha_client(hass)
     except ValueError:
         firmware_version = None
     else:
-        firmware_version = gateway.state.node_info.version
+        # The coordinator firmware version is not part of the client API yet
+        assert client.server is not None
+        firmware_version = client.server.gateway.state.node_info.version
 
     return FirmwareInfo(
         device=device,

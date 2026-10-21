@@ -4,10 +4,12 @@ import functools
 from typing import override
 
 from zha.application.platforms.infrared import (
-    BaseInfraredEmitter,
-    BaseInfraredReceiver,
     EntityInfraredSignalReceivedEvent,
     InfraredSignal,
+)
+from zha.client.platforms import (
+    InfraredEmitterEntity as ZhaInfraredEmitterEntity,
+    InfraredReceiverEntity as ZhaInfraredReceiverEntity,
 )
 
 from homeassistant.components.infrared import (
@@ -56,10 +58,10 @@ async def async_setup_entry(
 
 def _make_infrared_entity(entity_data: EntityData) -> ZHAEntity:
     """Create the HA entity matching the ZHA infrared entity type."""
-    if isinstance(entity_data.entity, BaseInfraredEmitter):
+    if isinstance(entity_data.entity, ZhaInfraredEmitterEntity):
         return ZHAInfraredEmitter(entity_data)
 
-    if isinstance(entity_data.entity, BaseInfraredReceiver):
+    if isinstance(entity_data.entity, ZhaInfraredReceiverEntity):
         return ZHAInfraredReceiver(entity_data)
 
     raise TypeError(f"Unknown infrared entity: {entity_data.entity!r}")

@@ -9,7 +9,7 @@ from zigpy.types import Channels
 from zigpy.util import pick_optimal_channel
 
 from .const import CONF_RADIO_TYPE, DOMAIN
-from .helpers import get_zha_data, get_zha_gateway
+from .helpers import get_zha_client, get_zha_data
 from .radio_manager import ZhaRadioManager
 
 if TYPE_CHECKING:
@@ -37,7 +37,10 @@ def _get_config_entry(hass: HomeAssistant) -> ConfigEntry:
 
 def async_get_active_network_settings(hass: HomeAssistant) -> NetworkBackup:
     """Get the network settings for the currently active ZHA network."""
-    app = get_zha_gateway(hass).application_controller
+    client = get_zha_client(hass)
+    # Network settings are not part of the client API yet
+    assert client.server is not None
+    app = client.server.gateway.application_controller
 
     return NetworkBackup(
         node_info=app.state.node_info,
@@ -94,7 +97,10 @@ async def async_change_channel(
 ) -> None:
     """Migrate the ZHA network to a new channel."""
 
-    app = get_zha_gateway(hass).application_controller
+    client = get_zha_client(hass)
+    # Channel changes are not part of the client API yet
+    assert client.server is not None
+    app = client.server.gateway.application_controller
 
     if new_channel == "auto":
         channel_energy = await app.energy_scan(

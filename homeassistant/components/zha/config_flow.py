@@ -51,7 +51,7 @@ from .const import (
     DOMAIN,
     LEGACY_ZEROCONF_PORT,
 )
-from .helpers import get_config_entry_unique_id, get_zha_gateway
+from .helpers import get_config_entry_unique_id, get_zha_client
 from .radio_manager import (
     DEVICE_SCHEMA,
     HARDWARE_DISCOVERY_SCHEMA,
@@ -1064,13 +1064,15 @@ class ZhaOptionsFlowHandler(BaseZhaFlow, OptionsFlow):
         if user_input is not None:
             # Perform a backup first
             try:
-                zha_gateway = get_zha_gateway(self.hass)
+                client = get_zha_client(self.hass)
             except ValueError:
                 pass
             else:
                 # The backup itself will be stored in `zigbee.db`, which the radio
-                # manager will read when the class is initialized
-                application_controller = zha_gateway.application_controller
+                # manager will read when the class is initialized. Backups are not
+                # part of the client API yet.
+                assert client.server is not None
+                application_controller = client.server.gateway.application_controller
                 await application_controller.backups.create_backup(load_devices=True)
 
             # Then unload the integration

@@ -21,9 +21,9 @@ from zha.application.const import (
     CLUSTER_TYPE_OUT,
     ZHA_GW_MSG,
 )
-from zha.application.gateway import Gateway
+from zha.application.gateway import Gateway as ServerGateway
 from zha.application.helpers import async_is_bindable_target, get_matched_clusters
-from zha.zigbee.device import Device
+from zha.zigbee.device import ZigbeeDevice
 from zha.zigbee.group import GroupMemberReference
 import zigpy.backups
 from zigpy.config import CONF_DEVICE
@@ -69,12 +69,15 @@ from .helpers import (
     IEEE_SCHEMA,
     SERVICE_PERMIT_PARAMS,
     EntityReference,
-    ZHAGatewayProxy,
     async_cluster_exists,
+    async_get_zha_device_info,
     cluster_command_schema_to_vol_schema,
     get_config_entry,
+    get_zha_client,
+    get_zha_data,
     get_zha_gateway,
-    get_zha_gateway_proxy,
+    group_info,
+    zha_device_info,
 )
 
 if TYPE_CHECKING:
@@ -175,7 +178,9 @@ async def websocket_permit_devices(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Permit ZHA zigbee devices."""
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
+    client = get_zha_client(hass)
+    log_relay = get_zha_data(hass).log_relay
+    assert log_relay is not None
     duration: int = msg[ATTR_DURATION]
     ieee: EUI64 | None = msg.get(ATTR_IEEE)
 
@@ -190,30 +195,31 @@ async def websocket_permit_devices(
     @callback
     def async_cleanup() -> None:
         """Remove signal listener and turn off debug mode."""
-        zha_gateway_proxy.async_disable_debug_mode()
+        log_relay.async_disable_debug_mode()
         remove_dispatcher_function()
 
     connection.subscriptions[msg["id"]] = async_cleanup
-    zha_gateway_proxy.async_enable_debug_mode()
+    log_relay.async_enable_debug_mode()
+    # Permitting joins is not part of the client API yet
+    assert client.server is not None
+    application_controller = client.server.gateway.application_controller
     src_ieee: EUI64
     link_key: KeyData
     if ATTR_SOURCE_IEEE in msg:
         src_ieee = msg[ATTR_SOURCE_IEEE]
         link_key = msg[ATTR_INSTALL_CODE]
         _LOGGER.debug("Allowing join for %s device with link key", src_ieee)
-        await zha_gateway_proxy.gateway.application_controller.permit_with_link_key(
+        await application_controller.permit_with_link_key(
             time_s=duration, node=src_ieee, link_key=link_key
         )
     elif ATTR_QR_CODE in msg:
         src_ieee, link_key = msg[ATTR_QR_CODE]
         _LOGGER.debug("Allowing join for %s device with link key", src_ieee)
-        await zha_gateway_proxy.gateway.application_controller.permit_with_link_key(
+        await application_controller.permit_with_link_key(
             time_s=duration, node=src_ieee, link_key=link_key
         )
     else:
-        await zha_gateway_proxy.gateway.application_controller.permit(
-            time_s=duration, node=ieee
-        )
+        await application_controller.permit(time_s=duration, node=ieee)
     connection.send_result(msg[ID])
 
 
@@ -224,25 +230,25 @@ async def websocket_get_devices(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Get ZHA devices."""
-    zha_gateway_proxy: ZHAGatewayProxy = get_zha_gateway_proxy(hass)
     devices = [
-        device.zha_device_info for device in zha_gateway_proxy.device_proxies.values()
+        await async_get_zha_device_info(hass, device)
+        for device in get_zha_gateway(hass).devices.values()
     ]
     connection.send_result(msg[ID], devices)
 
 
 @callback
-def _get_entity_name(zha_gateway: Gateway, entity_ref: EntityReference) -> str | None:
-    entity_registry = er.async_get(zha_gateway.hass)
+def _get_entity_name(hass: HomeAssistant, entity_ref: EntityReference) -> str | None:
+    entity_registry = er.async_get(hass)
     entry = entity_registry.async_get(entity_ref.ha_entity_id)
     return entry.name if entry else None
 
 
 @callback
 def _get_entity_original_name(
-    zha_gateway: Gateway, entity_ref: EntityReference
+    hass: HomeAssistant, entity_ref: EntityReference
 ) -> str | None:
-    entity_registry = er.async_get(zha_gateway.hass)
+    entity_registry = er.async_get(hass)
     entry = entity_registry.async_get(entity_ref.ha_entity_id)
     return entry.original_name if entry else None
 
@@ -254,33 +260,37 @@ async def websocket_get_groupable_devices(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Get ZHA devices that can be grouped."""
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
+    client = get_zha_client(hass)
+    zha_data = get_zha_data(hass)
+    # Groupable endpoints are not part of the client API yet
+    assert client.server is not None
+    server_gateway = client.server.gateway
 
-    devices = [
-        device
-        for device in zha_gateway_proxy.device_proxies.values()
-        if device.device.is_groupable
-    ]
     groupable_devices: list[dict[str, Any]] = []
 
-    for device in devices:
-        entity_refs = zha_gateway_proxy.ha_entity_refs[device.device.ieee]
+    for device in get_zha_gateway(hass).devices.values():
+        server_device = server_gateway.devices[device.ieee]
+        if (
+            not isinstance(server_device, ZigbeeDevice)
+            or not server_device.is_groupable
+        ):
+            continue
+
+        entity_refs = zha_data.entity_refs[device.ieee]
         groupable_devices.extend(
             {
                 "endpoint_id": ep_id,
                 "entities": [
                     {
-                        "name": _get_entity_name(zha_gateway_proxy, entity_ref),
-                        "original_name": _get_entity_original_name(
-                            zha_gateway_proxy, entity_ref
-                        ),
+                        "name": _get_entity_name(hass, entity_ref),
+                        "original_name": _get_entity_original_name(hass, entity_ref),
                     }
                     for entity_ref in entity_refs
-                    if entity_ref.entity_data.entity.endpoint.id == ep_id
+                    if entity_ref.entity_data.entity.state.endpoint_id == ep_id
                 ],
-                "device": device.zha_device_info,
+                "device": zha_device_info(hass, device.info),
             }
-            for ep_id in device.device.async_get_groupable_endpoints()
+            for ep_id in server_device.async_get_groupable_endpoints()
         )
 
     connection.send_result(msg[ID], groupable_devices)
@@ -293,8 +303,9 @@ async def websocket_get_groups(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Get ZHA groups."""
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
-    groups = [group.group_info for group in zha_gateway_proxy.group_proxies.values()]
+    groups = [
+        group_info(hass, group.info) for group in get_zha_gateway(hass).groups.values()
+    ]
     connection.send_result(msg[ID], groups)
 
 
@@ -310,10 +321,9 @@ async def websocket_get_device(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Get ZHA devices."""
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
     ieee: EUI64 = msg[ATTR_IEEE]
 
-    if not (zha_device := zha_gateway_proxy.device_proxies.get(ieee)):
+    if (zha_device := get_zha_gateway(hass).get_device(ieee)) is None:
         connection.send_message(
             websocket_api.error_message(
                 msg[ID], websocket_api.ERR_NOT_FOUND, "ZHA Device not found"
@@ -321,7 +331,7 @@ async def websocket_get_device(
         )
         return
 
-    device_info = zha_device.zha_device_info
+    device_info = await async_get_zha_device_info(hass, zha_device)
     connection.send_result(msg[ID], device_info)
 
 
@@ -337,10 +347,9 @@ async def websocket_get_group(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Get ZHA group."""
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
     group_id: int = msg[GROUP_ID]
 
-    if not (zha_group := zha_gateway_proxy.group_proxies.get(group_id)):
+    if (zha_group := get_zha_gateway(hass).get_group(group_id)) is None:
         connection.send_message(
             websocket_api.error_message(
                 msg[ID], websocket_api.ERR_NOT_FOUND, "ZHA Group not found"
@@ -348,8 +357,7 @@ async def websocket_get_group(
         )
         return
 
-    group_info = zha_group.group_info
-    connection.send_result(msg[ID], group_info)
+    connection.send_result(msg[ID], group_info(hass, zha_group.info))
 
 
 @websocket_api.require_admin
@@ -368,17 +376,13 @@ async def websocket_add_group(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Add a new ZHA group."""
-    zha_gateway = get_zha_gateway_proxy(hass)
+    zha_gateway = get_zha_gateway(hass)
     group_name: str = msg[GROUP_NAME]
     group_id: int | None = msg.get(GROUP_ID)
     members: list[GroupMemberReference] | None = msg.get(ATTR_MEMBERS)
-    group = await zha_gateway.gateway.async_create_zigpy_group(
-        group_name, members, group_id
-    )
+    group = await zha_gateway.async_create_zigpy_group(group_name, members, group_id)
     assert group
-    connection.send_result(
-        msg[ID], zha_gateway.group_proxies[group.group_id].group_info
-    )
+    connection.send_result(msg[ID], group_info(hass, group.info))
 
 
 @websocket_api.require_admin
@@ -395,18 +399,17 @@ async def websocket_remove_groups(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Remove the specified ZHA groups."""
-    zha_gateway = get_zha_gateway_proxy(hass)
+    zha_gateway = get_zha_gateway(hass)
     group_ids: list[int] = msg[GROUP_IDS]
 
     if len(group_ids) > 1:
         tasks = [
-            zha_gateway.gateway.async_remove_zigpy_group(group_id)
-            for group_id in group_ids
+            zha_gateway.async_remove_zigpy_group(group_id) for group_id in group_ids
         ]
         await asyncio.gather(*tasks)
     else:
-        await zha_gateway.gateway.async_remove_zigpy_group(group_ids[0])
-    ret_groups = [group.group_info for group in zha_gateway.group_proxies.values()]
+        await zha_gateway.async_remove_zigpy_group(group_ids[0])
+    ret_groups = [group_info(hass, group.info) for group in zha_gateway.groups.values()]
     connection.send_result(msg[ID], ret_groups)
 
 
@@ -426,7 +429,6 @@ async def websocket_add_group_members(
 ) -> None:
     """Add members to a ZHA group."""
     zha_gateway = get_zha_gateway(hass)
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
     group_id: int = msg[GROUP_ID]
     members: list[GroupMemberReference] = msg[ATTR_MEMBERS]
 
@@ -439,9 +441,7 @@ async def websocket_add_group_members(
         return
 
     await zha_group.async_add_members(members)
-    ret_group = zha_gateway_proxy.get_group_proxy(group_id)
-    assert ret_group
-    connection.send_result(msg[ID], ret_group.group_info)
+    connection.send_result(msg[ID], group_info(hass, zha_group.info))
 
 
 @websocket_api.require_admin
@@ -460,7 +460,6 @@ async def websocket_remove_group_members(
 ) -> None:
     """Remove members from a ZHA group."""
     zha_gateway = get_zha_gateway(hass)
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
     group_id: int = msg[GROUP_ID]
     members: list[GroupMemberReference] = msg[ATTR_MEMBERS]
 
@@ -473,9 +472,7 @@ async def websocket_remove_group_members(
         return
 
     await zha_group.async_remove_members(members)
-    ret_group = zha_gateway_proxy.get_group_proxy(group_id)
-    assert ret_group
-    connection.send_result(msg[ID], ret_group.group_info)
+    connection.send_result(msg[ID], group_info(hass, zha_group.info))
 
 
 @websocket_api.require_admin
@@ -532,8 +529,10 @@ async def websocket_update_topology(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Update the ZHA network topology."""
-    zha_gateway = get_zha_gateway(hass)
-    hass.async_create_task(zha_gateway.application_controller.topology.scan())
+    client = get_zha_client(hass)
+    # Topology scans are not part of the client API yet
+    assert client.server is not None
+    hass.async_create_task(client.server.gateway.application_controller.topology.scan())
 
 
 @websocket_api.require_admin
@@ -548,12 +547,15 @@ async def websocket_device_clusters(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Return a list of device clusters."""
-    zha_gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Cluster introspection is not part of the client API yet
+    assert client.server is not None
+    zha_gateway = client.server.gateway
     ieee: EUI64 = msg[ATTR_IEEE]
     zha_device = zha_gateway.get_device(ieee)
     response_clusters = []
     # Green Power devices have no clusters
-    if isinstance(zha_device, Device):
+    if isinstance(zha_device, ZigbeeDevice):
         clusters_by_endpoint = zha_device.async_get_clusters()
         for ep_id, clusters in clusters_by_endpoint.items():
             for c_id, cluster in clusters[CLUSTER_TYPE_IN].items():
@@ -593,7 +595,10 @@ async def websocket_device_cluster_attributes(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Return a list of cluster attributes."""
-    zha_gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Cluster introspection is not part of the client API yet
+    assert client.server is not None
+    zha_gateway = client.server.gateway
     ieee: EUI64 = msg[ATTR_IEEE]
     endpoint_id: int = msg[ATTR_ENDPOINT_ID]
     cluster_id: int = msg[ATTR_CLUSTER_ID]
@@ -640,7 +645,10 @@ async def websocket_device_cluster_commands(
     """Return a list of cluster commands."""
     from probatio import to_field_list  # noqa: PLC0415
 
-    zha_gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Cluster introspection is not part of the client API yet
+    assert client.server is not None
+    zha_gateway = client.server.gateway
     ieee: EUI64 = msg[ATTR_IEEE]
     endpoint_id: int = msg[ATTR_ENDPOINT_ID]
     cluster_id: int = msg[ATTR_CLUSTER_ID]
@@ -710,7 +718,10 @@ async def websocket_read_zigbee_cluster_attributes(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Read zigbee attribute for cluster on ZHA entity."""
-    zha_gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Attribute reads are not part of the client API yet
+    assert client.server is not None
+    zha_gateway = client.server.gateway
     ieee: EUI64 = msg[ATTR_IEEE]
     endpoint_id: int = msg[ATTR_ENDPOINT_ID]
     cluster_id: int = msg[ATTR_CLUSTER_ID]
@@ -762,15 +773,18 @@ async def websocket_get_bindable_devices(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Directly bind devices."""
-    zha_gateway_proxy = get_zha_gateway_proxy(hass)
+    client = get_zha_client(hass)
+    # Binding target checks are not part of the client API yet
+    assert client.server is not None
+    server_gateway = client.server.gateway
     source_ieee: EUI64 = msg[ATTR_IEEE]
-    source_device = zha_gateway_proxy.device_proxies.get(source_ieee)
+    source_device = server_gateway.get_device(source_ieee)
     assert source_device is not None
 
     devices = [
-        device.zha_device_info
-        for device in zha_gateway_proxy.device_proxies.values()
-        if async_is_bindable_target(source_device.device, device.device)
+        zha_device_info(hass, device.info)
+        for device in get_zha_gateway(hass).devices.values()
+        if async_is_bindable_target(source_device, server_gateway.devices[device.ieee])
     ]
 
     _LOGGER.debug(
@@ -797,11 +811,13 @@ async def websocket_bind_devices(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Directly bind devices."""
-    zha_gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Direct bindings are not part of the client API yet
+    assert client.server is not None
     source_ieee: EUI64 = msg[ATTR_SOURCE_IEEE]
     target_ieee: EUI64 = msg[ATTR_TARGET_IEEE]
     await async_binding_operation(
-        zha_gateway, source_ieee, target_ieee, zdo_types.ZDOCmd.Bind_req
+        client.server.gateway, source_ieee, target_ieee, zdo_types.ZDOCmd.Bind_req
     )
     _LOGGER.info(
         "Devices bound: %s: [%s] %s: [%s]",
@@ -826,11 +842,13 @@ async def websocket_unbind_devices(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Remove a direct binding between devices."""
-    zha_gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Direct bindings are not part of the client API yet
+    assert client.server is not None
     source_ieee: EUI64 = msg[ATTR_SOURCE_IEEE]
     target_ieee: EUI64 = msg[ATTR_TARGET_IEEE]
     await async_binding_operation(
-        zha_gateway, source_ieee, target_ieee, zdo_types.ZDOCmd.Unbind_req
+        client.server.gateway, source_ieee, target_ieee, zdo_types.ZDOCmd.Unbind_req
     )
     _LOGGER.info(
         "Devices un-bound: %s: [%s] %s: [%s]",
@@ -895,7 +913,7 @@ async def websocket_unbind_group(
 
 
 async def async_binding_operation(
-    zha_gateway: Gateway,
+    zha_gateway: ServerGateway,
     source_ieee: EUI64,
     target_ieee: EUI64,
     operation: zdo_types.ZDOCmd,
@@ -1039,13 +1057,16 @@ async def websocket_get_network_settings(
 ) -> None:
     """Get ZHA network settings."""
     backup = async_get_active_network_settings(hass)
-    zha_gateway = get_zha_gateway(hass)
+    client = get_zha_client(hass)
+    # Network settings are not part of the client API yet
+    assert client.server is not None
+    application_controller = client.server.gateway.application_controller
     config_entry: ConfigEntry = get_config_entry(hass)
     connection.send_result(
         msg[ID],
         {
             "radio_type": async_get_radio_type(hass, config_entry).name,
-            "device": zha_gateway.application_controller.config[CONF_DEVICE],
+            "device": application_controller.config[CONF_DEVICE],
             "settings": backup.as_dict(),
         },
     )
@@ -1058,8 +1079,10 @@ async def websocket_list_network_backups(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Get ZHA network settings."""
-    zha_gateway = get_zha_gateway(hass)
-    application_controller = zha_gateway.application_controller
+    client = get_zha_client(hass)
+    # Backups are not part of the client API yet
+    assert client.server is not None
+    application_controller = client.server.gateway.application_controller
 
     # Serialize known backups
     connection.send_result(
@@ -1076,8 +1099,10 @@ async def websocket_create_network_backup(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Create a ZHA network backup."""
-    zha_gateway = get_zha_gateway(hass)
-    application_controller = zha_gateway.application_controller
+    client = get_zha_client(hass)
+    # Backups are not part of the client API yet
+    assert client.server is not None
+    application_controller = client.server.gateway.application_controller
 
     # This can take 5-30s
     backup = await application_controller.backups.create_backup(load_devices=True)
@@ -1103,8 +1128,10 @@ async def websocket_restore_network_backup(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """Restore a ZHA network backup."""
-    zha_gateway = get_zha_gateway(hass)
-    application_controller = zha_gateway.application_controller
+    client = get_zha_client(hass)
+    # Backups are not part of the client API yet
+    assert client.server is not None
+    application_controller = client.server.gateway.application_controller
     backup = msg["backup"]
 
     if msg["ezsp_force_write_eui64"]:

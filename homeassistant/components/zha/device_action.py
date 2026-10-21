@@ -3,7 +3,7 @@
 from typing import Any
 
 import probatio
-from zha.zigbee.device import Device
+from zha.zigbee.device import ZigbeeDevice
 from zhaquirks.inovelli.types import AllLEDEffectType, SingleLEDEffectType
 from zigpy.zcl.clusters.security import IasWd
 
@@ -14,7 +14,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType, TemplateVarsType
 
 from .const import DOMAIN
-from .helpers import async_get_zha_device_proxy, convert_zha_error_to_ha_error
+from .helpers import async_get_zha_device, convert_zha_error_to_ha_error, get_zha_client
 from .services import SERVICE_WARNING_DEVICE_SQUAWK, SERVICE_WARNING_DEVICE_WARN
 
 # mypy: disallow-any-generics
@@ -155,11 +155,11 @@ async def async_get_actions(
 ) -> list[dict[str, str]]:
     """List device actions."""
     try:
-        zha_device = async_get_zha_device_proxy(hass, device_id).device
-    except KeyError, AttributeError:
+        zha_device = _get_server_device(hass, device_id)
+    except KeyError, ValueError:
         return []
     # Green Power devices have no clusters
-    if not isinstance(zha_device, Device):
+    if zha_device is None:
         return []
     cluster_ids = {
         cluster_id
@@ -191,8 +191,8 @@ async def _execute_siren_service(
     context: Context | None,
 ) -> None:
     try:
-        zha_device = async_get_zha_device_proxy(hass, config[CONF_DEVICE_ID]).device
-    except KeyError, AttributeError:
+        zha_device = async_get_zha_device(hass, config[CONF_DEVICE_ID])
+    except KeyError, ValueError:
         return
     await hass.services.async_call(
         DOMAIN,
@@ -203,13 +203,30 @@ async def _execute_siren_service(
     )
 
 
+def _get_server_device(hass: HomeAssistant, device_id: str) -> ZigbeeDevice | None:
+    """Return the server-side device, or None for devices without clusters."""
+    zha_device = async_get_zha_device(hass, device_id)
+    client = get_zha_client(hass)
+    # Cluster introspection and quirk cluster commands are not part of the client
+    # API yet
+    assert client.server is not None
+    server_device = client.server.gateway.get_device(zha_device.ieee)
+    if not isinstance(server_device, ZigbeeDevice):
+        return None
+    return server_device
+
+
 def _find_inovelli_cluster(hass: HomeAssistant, config: dict[str, Any]) -> Any:
     try:
-        zha_device = async_get_zha_device_proxy(hass, config[CONF_DEVICE_ID]).device
-    except (KeyError, AttributeError) as err:
+        zha_device = _get_server_device(hass, config[CONF_DEVICE_ID])
+    except (KeyError, ValueError) as err:
         raise InvalidDeviceAutomationConfig(
             f"ZHA device {config[CONF_DEVICE_ID]} not found"
         ) from err
+    if zha_device is None:
+        raise InvalidDeviceAutomationConfig(
+            f"ZHA device {config[CONF_DEVICE_ID]} has no clusters"
+        )
     try:
         return zha_device.device.find_cluster(cluster_id=INOVELLI_CLUSTER_ID)
     except ValueError as err:
